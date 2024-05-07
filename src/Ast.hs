@@ -1,5 +1,7 @@
 module Ast where
 
+type Error = String
+
 type Id = String
 type Decl = (ValueType, Id)
 type Offset = Int

@@ -1,6 +1,7 @@
 module Gen where
 
 import Typecheck
+import Ast (OffsetAst)
 
-gen :: TypedAst -> String
+gen :: OffsetAst -> String
 gen = undefined
