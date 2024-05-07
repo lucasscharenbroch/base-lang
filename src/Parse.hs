@@ -7,10 +7,10 @@ import Text.Parsec
 import Text.Parsec.String
 import Data.Bifunctor (first)
 
-parse :: String -> Either Error NoOffsetAst
+parse :: String -> Either Error UnresolvedAst
 parse = first show . runParser program () "<input>"
 
-program :: Parser NoOffsetAst
+program :: Parser UnresolvedAst
 program = many topDecl
 
 topDecl :: Parser (TopDecl ())

@@ -8,8 +8,8 @@ type Offset = Int
 
 -- a = id-associated data
 type Ast a = [TopDecl a]
-type NoOffsetAst = Ast ()
-type OffsetAst = Ast (ValueType, Offset)
+type UnresolvedAst = Ast ()
+type ResolvedAst = Ast (ValueType, Offset)
 
 data ValueType = VTInteger
                | VTLogical -- boolean

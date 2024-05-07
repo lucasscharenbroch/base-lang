@@ -8,5 +8,5 @@ data Type = TVoid
           |
 -}
 
-typecheck :: OffsetAst -> Either Error ()
+typecheck :: ResolvedAst -> Either Error ()
 typecheck = undefined

@@ -1,7 +1,8 @@
 module Gen where
 
-import Typecheck
-import Ast (OffsetAst)
+import Ast
 
-gen :: OffsetAst -> String
+type MipsProgram = ()
+
+gen :: ResolvedAst -> Either Error MipsProgram
 gen = undefined
