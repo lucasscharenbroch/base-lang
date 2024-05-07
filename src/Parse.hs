@@ -1,6 +1,9 @@
 module Parse where
 
 import Error
+import Text.Parsec
+import Text.Parsec.Char
+import Text.Parsec.String
 
 type Ast = () -- TODO
 
