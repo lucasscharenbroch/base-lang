@@ -2,8 +2,14 @@ module Typecheck where
 
 import Parse
 import Error
+import Ast
 
 type TypedAst = () -- TODO
 
-typecheck :: Ast -> Either Error TypedAst
+{-
+data Type = TVoid
+          |
+-}
+
+typecheck :: OffsetAst -> Either Error ()
 typecheck = undefined

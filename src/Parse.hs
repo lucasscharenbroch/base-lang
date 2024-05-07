@@ -1,11 +1,13 @@
 module Parse where
 
+import Lex
 import Error
+import Ast
+
 import Text.Parsec
 import Text.Parsec.Char
 import Text.Parsec.String
+data Expr
 
-type Ast = () -- TODO
-
-parse :: String -> Either Error Ast
+parse :: String -> Either Error NoOffsetAst
 parse = undefined
