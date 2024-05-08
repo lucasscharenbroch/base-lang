@@ -1,5 +1,7 @@
 module Ast where
 
+import Text.Parsec (SourcePos)
+
 type Error = String
 
 type Id = String
@@ -13,30 +15,31 @@ type ResolvedAst = Ast (ValueType, Offset)
 
 data ValueType = VTInteger
                | VTLogical -- boolean
+               | VTString
                | VTTuple Id
 
-data TopDecl a = FnDecl Id [Decl] [Stmt a]
-               | TupleDef Id [Decl]
-               | Global Decl
+data TopDecl a = FnDecl SourcePos Id [Decl] [Stmt a]
+               | TupleDef SourcePos Id [Decl]
+               | Global SourcePos Decl
 
-data Stmt a = Inc (Expr a)
-            | Dec (Expr a)
-            | If (Expr a) [Stmt a]
-            | IfElse (Expr a) [Stmt a] [Stmt a]
-            | While (Expr a) [Stmt a]
-            | Read (Expr a)
-            | Write (Expr a)
-            | Return (Maybe (Expr a))
-            | ExprStmt (Expr a) -- call, assignment, etc.
+data Stmt a = Inc SourcePos (Expr a)
+            | Dec SourcePos (Expr a)
+            | If SourcePos (Expr a) [Stmt a]
+            | IfElse SourcePos (Expr a) [Stmt a] [Stmt a]
+            | While SourcePos (Expr a) [Stmt a]
+            | Read SourcePos (Expr a)
+            | Write SourcePos (Expr a)
+            | Return SourcePos (Maybe (Expr a))
+            | ExprStmt SourcePos (Expr a) -- call, assignment, etc.
 
-data Expr a = LogicalLit Bool
-            | IntLit Int
-            | StringLit String
-            | Assignment (Lvalue a) (Expr a)
-            | Call (Lvalue a) [Expr a]
-            | UnaryExpr UnaryOp (Expr a)
-            | BinaryExpr BinaryOp (Expr a) (Expr a)
-            | Lvalue (Lvalue a)
+data Expr a = LogicalLit SourcePos Bool
+            | IntLit SourcePos Int
+            | StringLit SourcePos String
+            | Assignment SourcePos (Lvalue a) (Expr a)
+            | Call SourcePos (Lvalue a) [Expr a]
+            | UnaryExpr SourcePos UnaryOp (Expr a)
+            | BinaryExpr SourcePos BinaryOp (Expr a) (Expr a)
+            | Lvalue SourcePos (Lvalue a)
 
 data Lvalue a = Identifier Id a
               | TupleAccess (Lvalue a) Id a
