@@ -38,9 +38,10 @@ valueType = VTInteger <$ reserved "integer"
 tupleDef :: Parser (TopDecl ())
 tupleDef = TupleDef <$> getPosition <*> try (reserved "tuple" *> identifier <* symbol "{")
        <*> many declDot <* symbol "}"
+       <* dot
 
 global :: Parser (TopDecl ())
-global = Global <$> decl
+global = Global <$> declDot
 
 decl :: Parser Decl
 decl = Decl <$> getPosition <*> valueType <*> identifier
@@ -60,7 +61,7 @@ stmt = IfElse <$> getPosition <*> (reserved "if" *> expr) <*> brackets body <*> 
    <|> ExprStmt <$> getPosition <*> (call <|> assign) <* dot
    <|> do pos <- getPosition
           lval <- lvalue
-          (Inc pos lval  <$ reservedOp "++") <|> (Dec pos lval <$ reservedOp "--")
+          ((Inc pos lval  <$ reservedOp "++") <|> (Dec pos lval <$ reservedOp "--")) <* dot
 
 expr :: Parser (Expr ())
 expr = buildExpressionParser [
