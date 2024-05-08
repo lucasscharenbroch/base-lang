@@ -5,18 +5,21 @@ import Text.Parsec (SourcePos)
 type Error = String
 
 type Id = String
-type Offset = Int
 type Body a = ([Decl], [Stmt a])
 
 data Decl = Decl SourcePos ValueType Id
     deriving (Show) -- TODO remove (all shows)
 
+data Location = Label String
+              | Offset Int
+
 -- a = id-associated data
 type Ast a = [TopDecl a]
 type UnresolvedAst = Ast ()
-type ResolvedAst = Ast (ValueType, Offset)
+type ResolvedAst = Ast (ValueType, Location)
 
 data Type = TVoid
+          | TFn [ValueType] Type
           | TValType ValueType
     deriving (Show)
 
