@@ -30,7 +30,7 @@ data Stmt a = Inc SourcePos (Expr a)
             | If SourcePos (Expr a) [Stmt a]
             | IfElse SourcePos (Expr a) [Stmt a] [Stmt a]
             | While SourcePos (Expr a) [Stmt a]
-            | Read SourcePos (Expr a)
+            | Read SourcePos (Lvalue a)
             | Write SourcePos (Expr a)
             | Return SourcePos (Maybe (Expr a))
             | ExprStmt SourcePos (Expr a) -- call, assignment, etc.
@@ -44,8 +44,8 @@ data Expr a = LogicalLit SourcePos Bool
             | BinaryExpr SourcePos BinaryOp (Expr a) (Expr a)
             | Lvalue SourcePos (Lvalue a)
 
-data Lvalue a = Identifier Id a
-              | TupleAccess (Lvalue a) Id a
+data Lvalue a = Identifier SourcePos Id a
+              | TupleAccess SourcePos (Lvalue a) Id a
 
 data UnaryOp = Negate | Not
 data BinaryOp = Add | Sub | Mul | Div | Eq | Ne | Gt | Ge | Lt | Le | And | Or

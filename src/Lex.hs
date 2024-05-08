@@ -37,14 +37,8 @@ stringLiteral = Tok.stringLiteral lexer
 natural :: Parser Integer
 natural = Tok.natural lexer
 
-parens :: Parser a -> Parser a
-parens = Tok.parens lexer
-
 brackets :: Parser a -> Parser a
 brackets = Tok.brackets lexer
-
-braces :: Parser a -> Parser a
-braces = Tok.braces lexer
 
 dot :: Parser ()
 dot = void $ Tok.dot lexer
