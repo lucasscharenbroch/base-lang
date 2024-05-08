@@ -6,10 +6,16 @@ import Resolve
 import Generate
 import Ast
 
+import System.IO
+
 import Control.Monad
 
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = do
+    input <- getContents
+    case parse input of
+        Left err -> hPutStrLn stderr err
+        Right ast -> print ast
 
 compile :: String -> Either Error MipsProgram
 compile = parse >=>

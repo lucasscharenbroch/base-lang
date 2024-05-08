@@ -13,7 +13,7 @@ parse :: String -> Either Error UnresolvedAst
 parse = first show . runParser program () "<input>"
 
 program :: Parser UnresolvedAst
-program = many topDecl
+program = many topDecl <* eof
 
 topDecl :: Parser (TopDecl ())
 topDecl = fn
@@ -23,7 +23,7 @@ topDecl = fn
 fn :: Parser (TopDecl ())
 fn = try (FnDecl <$> getPosition <*> returnType <*> identifier <* symbol "{")
  <*> commaSep param <* symbol "}"
- <*> brackets (many stmt)
+ <*> brackets body
       where param = (,) <$> valueType <*> identifier
 
 returnType :: Parser Type
@@ -44,18 +44,22 @@ tupleDef = TupleDef <$> getPosition <*> try (reserved "tuple" *> identifier <* s
 global :: Parser (TopDecl ())
 global = Global <$> getPosition <*> try ((,) <$> valueType <*> identifier) <* dot
 
+local :: Parser Decl
+local = try ((,) <$> valueType <*> identifier) <* dot
+
+body :: Parser (Body ())
+body = (,) <$> many local <*> many stmt
+
 stmt :: Parser (Stmt ())
 stmt = Inc <$> getPosition <*> expr <* dot
    <|> Dec <$> getPosition <*> expr <* dot
-   <|> If <$> getPosition <*> expr <*> brackets (many stmt)
-   <|> IfElse <$> getPosition <*> expr <*> brackets (many stmt) <*> brackets (many stmt)
-   <|> While <$> getPosition <*> expr <*> brackets (many stmt)
+   <|> IfElse <$> getPosition <*> (reserved "if" *> expr) <*> brackets body <*> optionMaybe (reserved "else" *> brackets body)
+   <|> While <$> getPosition <*> expr <*> brackets body
    <|> Read <$> getPosition <*> lvalue <* dot
    <|> Write <$> getPosition <*> expr <* dot
    <|> Return <$> getPosition <*> optionMaybe expr <* dot
    <|> ExprStmt <$> getPosition <*> exprStmt <* dot
    where exprStmt = call <|> assign
-
 
 expr :: Parser (Expr ())
 expr = buildExpressionParser [
@@ -67,8 +71,6 @@ expr = buildExpressionParser [
             [binary "&" And AssocLeft],
             [binary "|" Or AssocLeft]
       ] term
-    <|> call
-    <|> assign
 
 prefix :: String -> UnaryOp -> Operator String () Identity (Expr ())
 prefix name op = Prefix (reservedOp name >> UnaryExpr <$> getPosition <*> return op)
@@ -85,6 +87,7 @@ term :: Parser (Expr ())
 term = LogicalLit <$> getPosition <*> (True <$ reserved "True" <|> False <$ reserved "False")
    <|> IntLit <$> getPosition <*> (fromIntegral <$> natural)
    <|> StringLit <$> getPosition <*> stringLiteral
+   <|> assign
    <|> call
    <|> Lvalue <$> getPosition <*> lvalue
    <|> parens expr
