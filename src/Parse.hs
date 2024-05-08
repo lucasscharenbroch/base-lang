@@ -5,7 +5,9 @@ import Ast
 
 import Text.Parsec
 import Text.Parsec.String
+import Text.Parsec.Expr
 import Data.Bifunctor (first)
+import Data.Functor.Identity (Identity)
 
 parse :: String -> Either Error UnresolvedAst
 parse = first show . runParser program () "<input>"
@@ -54,15 +56,24 @@ stmt = Inc <$> getPosition <*> expr <* dot
    <|> ExprStmt <$> getPosition <*> exprStmt <* dot
    where exprStmt = call <|> assign
 
+
 expr :: Parser (Expr ())
-expr = LogicalLit <$> getPosition <*> (True <$ reserved "True" <|> False <$ reserved "False")
-   <|> IntLit <$> getPosition <*> (fromIntegral <$> natural)
-   <|> StringLit <$> getPosition <*> stringLiteral
-   <|> UnaryExpr <$> getPosition <*> unaryOp <*> expr
-   <|> try ((\sp x o y -> BinaryExpr sp o x y) <$> getPosition <*> expr <*> binaryOp) <*> expr
-   <|> assign
-   <|> call
-   <|> Lvalue <$> getPosition <*> lvalue
+expr = buildExpressionParser [
+            [prefix "~" Not, prefix "-" Negate],
+            [binary "*" Mul AssocLeft, binary "/" Div AssocLeft],
+            [binary "+" Add AssocLeft, binary "-" Sub AssocLeft],
+            [binary "==" Eq AssocNone, binary ">" Gt AssocNone, binary ">=" Ge AssocNone,
+             binary "~=" Ne AssocNone, binary "<" Lt AssocNone, binary "<=" Le AssocNone],
+            [binary "&" And AssocLeft],
+            [binary "|" Or AssocLeft]
+      ] term
+    <|> call
+    <|> assign
+
+prefix :: String -> UnaryOp -> Operator String () Identity (Expr ())
+prefix name op = Prefix (reservedOp name >> UnaryExpr <$> getPosition <*> return op)
+binary :: String -> BinaryOp -> Assoc -> Operator String () Identity (Expr ())
+binary name op = Infix (reservedOp name >> BinaryExpr <$> getPosition <*> return op)
 
 call :: Parser (Expr ())
 call = try (Call <$> getPosition <*> lvalue <* symbol "(") <*> commaSep expr <* symbol ")"
@@ -70,23 +81,13 @@ call = try (Call <$> getPosition <*> lvalue <* symbol "(") <*> commaSep expr <* 
 assign :: Parser (Expr ())
 assign = try (Assignment <$> getPosition <*> lvalue <* reservedOp "=") <*> expr
 
-unaryOp :: Parser UnaryOp
-unaryOp = Negate <$ reservedOp "-"
-      <|> Not <$ reservedOp "~"
-
-binaryOp :: Parser BinaryOp
-binaryOp = Add <$ reservedOp "+"
-       <|> Sub <$ reservedOp "-"
-       <|> Mul <$ reservedOp "*"
-       <|> Div <$ reservedOp "/"
-       <|> Eq <$ reservedOp "=="
-       <|> Ne <$ reservedOp "~="
-       <|> Gt <$ reservedOp ">"
-       <|> Ge <$ reservedOp ">="
-       <|> Lt <$ reservedOp "<"
-       <|> Le <$ reservedOp "<="
-       <|> And <$ reservedOp "&"
-       <|> Or <$ reservedOp "|"
+term :: Parser (Expr ())
+term = LogicalLit <$> getPosition <*> (True <$ reserved "True" <|> False <$ reserved "False")
+   <|> IntLit <$> getPosition <*> (fromIntegral <$> natural)
+   <|> StringLit <$> getPosition <*> stringLiteral
+   <|> call
+   <|> Lvalue <$> getPosition <*> lvalue
+   <|> parens expr
 
 lvalue :: Parser (Lvalue ())
 lvalue = intoLvalue . reverse <$> ((,) <$> getPosition <*> identifier) `sepBy1` colon

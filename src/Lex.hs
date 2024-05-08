@@ -40,6 +40,9 @@ natural = Tok.natural lexer
 brackets :: Parser a -> Parser a
 brackets = Tok.brackets lexer
 
+parens :: Parser a -> Parser a
+parens = Tok.parens lexer
+
 dot :: Parser ()
 dot = void $ Tok.dot lexer
 
