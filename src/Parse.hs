@@ -19,10 +19,28 @@ topDecl = fn
       <|> global
 
 fn :: Parser (TopDecl ())
-fn = undefined
+fn = try (FnDecl <$> getPosition <*> returnType <*> identifier <* symbol "{")
+ <*> commaSep param <* symbol "}"
+ <*> brackets (many stmt)
+      where param = (,) <$> valueType <*> identifier
+
+returnType :: Parser Type
+returnType = TVoid <$ reserved "void"
+         <|> TValType <$> valueType
+
+valueType :: Parser ValueType
+valueType = VTInteger <$ reserved "integer"
+        <|> VTLogical <$ reserved "logical"
+        <|> VTString <$ reserved "string"
+        <|> VTTuple <$> (reserved "tuple" *> identifier)
 
 tupleDef :: Parser (TopDecl ())
-tupleDef = undefined
+tupleDef = TupleDef <$> getPosition <*> try (reserved "tuple" *> identifier <* symbol "{")
+       <*> many field <* symbol "}"
+      where field = (,) <$> valueType <*> identifier <* dot
 
 global :: Parser (TopDecl ())
-global = undefined
+global = Global <$> getPosition <*> try ((,) <$> valueType <*> identifier) <* dot
+
+stmt :: Parser (Stmt ())
+stmt = undefined

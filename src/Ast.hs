@@ -13,12 +13,15 @@ type Ast a = [TopDecl a]
 type UnresolvedAst = Ast ()
 type ResolvedAst = Ast (ValueType, Offset)
 
+data Type = TVoid
+          | TValType ValueType
+
 data ValueType = VTInteger
                | VTLogical -- boolean
                | VTString
                | VTTuple Id
 
-data TopDecl a = FnDecl SourcePos Id [Decl] [Stmt a]
+data TopDecl a = FnDecl SourcePos Type Id [Decl] [Stmt a]
                | TupleDef SourcePos Id [Decl]
                | Global SourcePos Decl
 

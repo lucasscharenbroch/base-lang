@@ -54,3 +54,6 @@ colon = void $ Tok.colon lexer
 
 commaSep :: Parser a -> Parser [a]
 commaSep = Tok.commaSep lexer
+
+symbol :: String -> Parser ()
+symbol = void . Tok.symbol lexer
