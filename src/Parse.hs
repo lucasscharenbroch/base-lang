@@ -22,9 +22,8 @@ topDecl = fn
 
 fn :: Parser (TopDecl ())
 fn = try (FnDecl <$> getPosition <*> returnType <*> identifier <* symbol "{")
- <*> commaSep param <* symbol "}"
+ <*> commaSep decl <* symbol "}"
  <*> brackets body
-      where param = (,) <$> valueType <*> identifier
 
 returnType :: Parser Type
 returnType = TVoid <$ reserved "void"
@@ -38,28 +37,30 @@ valueType = VTInteger <$ reserved "integer"
 
 tupleDef :: Parser (TopDecl ())
 tupleDef = TupleDef <$> getPosition <*> try (reserved "tuple" *> identifier <* symbol "{")
-       <*> many field <* symbol "}"
-      where field = (,) <$> valueType <*> identifier <* dot
+       <*> many declDot <* symbol "}"
 
 global :: Parser (TopDecl ())
-global = Global <$> getPosition <*> try ((,) <$> valueType <*> identifier) <* dot
+global = Global <$> decl
 
-local :: Parser Decl
-local = try ((,) <$> valueType <*> identifier) <* dot
+decl :: Parser Decl
+decl = Decl <$> getPosition <*> valueType <*> identifier
+
+declDot :: Parser Decl
+declDot = decl <* dot
 
 body :: Parser (Body ())
-body = (,) <$> many local <*> many stmt
+body = (,) <$> many declDot <*> many stmt
 
 stmt :: Parser (Stmt ())
-stmt = Inc <$> getPosition <*> expr <* dot
-   <|> Dec <$> getPosition <*> expr <* dot
-   <|> IfElse <$> getPosition <*> (reserved "if" *> expr) <*> brackets body <*> optionMaybe (reserved "else" *> brackets body)
-   <|> While <$> getPosition <*> expr <*> brackets body
-   <|> Read <$> getPosition <*> lvalue <* dot
-   <|> Write <$> getPosition <*> expr <* dot
-   <|> Return <$> getPosition <*> optionMaybe expr <* dot
-   <|> ExprStmt <$> getPosition <*> exprStmt <* dot
-   where exprStmt = call <|> assign
+stmt = IfElse <$> getPosition <*> (reserved "if" *> expr) <*> brackets body <*> optionMaybe (reserved "else" *> brackets body)
+   <|> While <$> getPosition <*> (reserved "while" *> expr) <*> brackets body
+   <|> Read <$> getPosition <*> (reserved "read" *> reservedOp ">>" *> lvalue) <* dot
+   <|> Write <$> getPosition <*> (reserved "write" *> reservedOp "<<" *> expr) <* dot
+   <|> Return <$> getPosition <*> (reserved "return" *> optionMaybe expr) <* dot
+   <|> ExprStmt <$> getPosition <*> (call <|> assign) <* dot
+   <|> do pos <- getPosition
+          lval <- lvalue
+          (Inc pos lval  <$ reservedOp "++") <|> (Dec pos lval <$ reservedOp "--")
 
 expr :: Parser (Expr ())
 expr = buildExpressionParser [

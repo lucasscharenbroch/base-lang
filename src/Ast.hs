@@ -5,9 +5,11 @@ import Text.Parsec (SourcePos)
 type Error = String
 
 type Id = String
-type Decl = (ValueType, Id)
 type Offset = Int
 type Body a = ([Decl], [Stmt a])
+
+data Decl = Decl SourcePos ValueType Id
+    deriving (Show) -- TODO remove (all shows)
 
 -- a = id-associated data
 type Ast a = [TopDecl a]
@@ -26,17 +28,17 @@ data ValueType = VTInteger
 
 data TopDecl a = FnDecl SourcePos Type Id [Decl] (Body a)
                | TupleDef SourcePos Id [Decl]
-               | Global SourcePos Decl
+               | Global Decl
     deriving (Show)
 
-data Stmt a = Inc SourcePos (Expr a)
-            | Dec SourcePos (Expr a)
+data Stmt a = Inc SourcePos (Lvalue a)
+            | Dec SourcePos (Lvalue a)
             | IfElse SourcePos (Expr a) (Body a) (Maybe (Body a))
             | While SourcePos (Expr a) (Body a)
             | Read SourcePos (Lvalue a)
             | Write SourcePos (Expr a)
             | Return SourcePos (Maybe (Expr a))
-            | ExprStmt SourcePos (Expr a) -- call, assignment, etc.
+            | ExprStmt SourcePos (Expr a) -- call, assignment
     deriving (Show)
 
 data Expr a = LogicalLit SourcePos Bool
