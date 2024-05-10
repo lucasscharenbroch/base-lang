@@ -65,25 +65,28 @@ tupleLookupOrErr pos id_ = do
         Just decls -> return decls
         Nothing -> lift . Left $ "Undefined tuple type: `" ++ id_ ++ "` @" ++ show pos
 
-assertUniqueDecl :: Decl -> ResolveM ()
-assertUniqueDecl (Decl pos _type id_) = do
+assertUniqueId :: SourcePos -> Id -> ResolveM ()
+assertUniqueId pos id_ = do
     maybeMatch <- idLookup id_
     case maybeMatch of
         Just _ -> lift . Left $ "Multiply declared identifier: `" ++ id_ ++ "` @" ++ show pos
         Nothing -> return ()
 
 addGlobalDecl :: Decl -> ResolveM ()
-addGlobalDecl decl@(Decl _pos type_ id_) = do
-    assertUniqueDecl decl
+addGlobalDecl (Decl pos type_ id_) = addGlobalId pos (TValType type_) id_
+
+addGlobalId :: SourcePos -> Type -> Id -> ResolveM ()
+addGlobalId pos type_ id_ = do
+    assertUniqueId pos id_
     let location = Label $ "_" ++ id_
     modifySymTable (\st -> insert id_ (type_, location) (head st) : tail st)
 
 addLocalDecl :: Decl -> ResolveM ()
-addLocalDecl decl@(Decl _pos type_ id_) = do
-    assertUniqueDecl decl
-    typeSize <- calcTypeSize _pos type_
+addLocalDecl (Decl pos type_ id_) = do
+    assertUniqueId pos id_
+    typeSize <- calcTypeSize pos (TValType type_)
     location <- allocateLocalSpace typeSize
-    modifySymTable (\st -> insert id_ (type_, location) (head st) : tail st)
+    modifySymTable (\st -> insert id_ (TValType type_, location) (head st) : tail st)
 
 calcTypeSize :: SourcePos -> Type -> ResolveM Int
 calcTypeSize pos (TValType vt) = case vt of
@@ -92,7 +95,7 @@ calcTypeSize pos (TValType vt) = case vt of
     VTString -> return 1 -- pointer
     VTTuple id_ -> do
         decls <- tupleLookupOrErr pos id_
-        sum <$> mapM (\(Decl pos' type_ _id) -> calcTypeSize pos' type_) decls
+        sum <$> mapM (\(Decl pos' type_ _id) -> calcTypeSize pos' (TValType type_)) decls
 calcTypeSize _ _ = error "Can't calculate size of non-value type"
 
 allocateLocalSpace :: Int -> ResolveM Location
@@ -102,9 +105,15 @@ allocateLocalSpace n = do
     return . Offset $ oldCnt
 
 resolveTopDecl :: TopDecl () -> ResolveM (TopDecl R)
-resolveTopDecl (FnDecl pos retType id_ params body) = undefined
+resolveTopDecl (FnDecl pos retType id_ params body) = do
+    let paramTypes = map (\(Decl _ type_ _ ) -> type_) params
+    addGlobalId pos (TFn paramTypes retType) id_
+    FnDecl pos retType id_ params <$> withNewScope (resolveBody body)
 resolveTopDecl (TupleDef pos id_ decls) = addTupleDecl pos id_ decls >> return (TupleDef pos id_ decls)
 resolveTopDecl (Global decl) = addGlobalDecl decl >> return (Global decl)
+
+resolveBody :: Body () -> ResolveM (Body R)
+resolveBody = undefined
 
 resolveStmt :: Stmt () -> ResolveM (Stmt R)
 resolveStmt = undefined

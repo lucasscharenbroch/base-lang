@@ -44,7 +44,7 @@ global :: Parser (TopDecl ())
 global = Global <$> declDot
 
 decl :: Parser Decl
-decl = Decl <$> getPosition <*> (TValType <$> valueType) <*> identifier
+decl = Decl <$> getPosition <*> valueType <*> identifier
 
 declDot :: Parser Decl
 declDot = decl <* dot
