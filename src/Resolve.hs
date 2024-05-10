@@ -58,6 +58,13 @@ idLookup id_ = do
         [] -> Nothing
         x:_ -> Just x
 
+idLookupOrErr :: SourcePos -> Id -> ResolveM R
+idLookupOrErr pos id_ = do
+    maybeR <- idLookup id_
+    case maybeR of
+        Just r -> return r
+        Nothing -> lift . Left $ "Undefined identifier: `" ++ id_ ++ "` @" ++ show pos
+
 tupleLookupOrErr :: SourcePos -> String -> ResolveM [Decl]
 tupleLookupOrErr pos id_ = do
     tupTable <- tupleTable <$> get
@@ -108,15 +115,41 @@ resolveTopDecl :: TopDecl () -> ResolveM (TopDecl R)
 resolveTopDecl (FnDecl pos retType id_ params body) = do
     let paramTypes = map (\(Decl _ type_ _ ) -> type_) params
     addGlobalId pos (TFn paramTypes retType) id_
-    FnDecl pos retType id_ params <$> withNewScope (resolveBody body)
+    FnDecl pos retType id_ params <$> resolveBody body
 resolveTopDecl (TupleDef pos id_ decls) = addTupleDecl pos id_ decls >> return (TupleDef pos id_ decls)
 resolveTopDecl (Global decl) = addGlobalDecl decl >> return (Global decl)
 
 resolveBody :: Body () -> ResolveM (Body R)
-resolveBody = undefined
+resolveBody (decls, stmts) = withNewScope $ do
+    mapM_ addLocalDecl decls
+    stmts' <- mapM resolveStmt stmts
+    return (decls, stmts')
+
+resolveLvalue :: Lvalue () -> ResolveM (Lvalue R)
+resolveLvalue (Identifier pos id_ ()) = do
+    r <- idLookupOrErr pos id_
+    return $ Identifier pos id_ r
+resolveLvalue (TupleAccess pos lval id_ ()) = do
+    undefined
+    -- TODO: assert that id_ is of tuple type,
+    -- recursively calculate the offset
 
 resolveStmt :: Stmt () -> ResolveM (Stmt R)
-resolveStmt = undefined
+resolveStmt (Inc pos lval) = Inc pos <$> resolveLvalue lval
+resolveStmt (Dec pos lval) = Dec pos <$> resolveLvalue lval
+resolveStmt (While pos cond body) = While pos <$> resolveExpr cond <*> resolveBody body
+resolveStmt (Read pos lval) = Read pos <$> resolveLvalue lval
+resolveStmt (Write pos expr) = Write pos <$> resolveExpr expr
+resolveStmt (Return pos maybeExpr) = Return pos <$> mapM resolveExpr maybeExpr
+resolveStmt (ExprStmt pos expr) = ExprStmt pos <$> resolveExpr expr
+resolveStmt (IfElse pos cond ifBody maybeElseBody) = IfElse pos <$> resolveExpr cond <*> resolveBody ifBody <*> mapM resolveBody maybeElseBody
 
 resolveExpr :: Expr () -> ResolveM (Expr R)
-resolveExpr = undefined
+resolveExpr (LogicalLit pos val) = return $ LogicalLit pos val
+resolveExpr (IntLit pos val) = return $ IntLit pos val
+resolveExpr (StringLit pos val) = return $ StringLit pos val
+resolveExpr (Assignment pos lval expr) = Assignment pos <$> resolveLvalue lval <*> resolveExpr expr
+resolveExpr (Call pos lval args) = Call pos <$> resolveLvalue lval <*> mapM resolveExpr args
+resolveExpr (UnaryExpr pos op arg) = UnaryExpr pos op <$> resolveExpr arg
+resolveExpr (BinaryExpr pos op left right) = BinaryExpr pos op <$> resolveExpr left <*> resolveExpr right
+resolveExpr (Lvalue pos lval) = Lvalue pos <$> resolveLvalue lval
