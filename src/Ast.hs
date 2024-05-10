@@ -7,7 +7,7 @@ type Error = String
 type Id = String
 type Body a = ([Decl], [Stmt a])
 
-data Decl = Decl SourcePos ValueType Id
+data Decl = Decl SourcePos Type Id
     deriving (Show) -- TODO remove (all shows)
 
 data Location = Label String
