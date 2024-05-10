@@ -16,7 +16,7 @@ data Location = Label String
 -- a = id-associated data
 type Ast a = [TopDecl a]
 type UnresolvedAst = Ast ()
-type ResolvedAst = Ast (ValueType, Location)
+type ResolvedAst = Ast (Type, Location)
 
 data Type = TVoid
           | TFn [ValueType] Type
