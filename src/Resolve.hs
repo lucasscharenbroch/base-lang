@@ -1,7 +1,7 @@
 module Resolve where
 
-import Prelude hiding (lookup)
-import Data.Map (Map, insert, lookup, empty)
+import Data.Map (Map, insert, empty)
+import qualified Data.Map as Map
 import Control.Monad.State.Lazy
 import Text.Parsec (SourcePos)
 
@@ -47,14 +47,14 @@ withNewScope = with $ modify (\s -> s {symbolTable = empty : symbolTable s})
 addTupleDecl :: SourcePos -> String -> [Decl] -> ResolveM ()
 addTupleDecl pos id_ decls = do
     tupTable <- tupleTable <$> get
-    case lookup id_ tupTable of
+    case Map.lookup id_ tupTable of
         Just _ -> lift . Left $ "Multiply declared tuple type: `" ++ id_ ++ "` @" ++ show pos
         Nothing -> modify (\s -> s {tupleTable = insert id_ decls tupTable})
 
 idLookup :: Id -> ResolveM (Maybe R)
 idLookup id_ = do
     symTable <- symbolTable <$> get
-    return $ case mapMaybe (lookup id_) symTable of
+    return $ case mapMaybe (Map.lookup id_) symTable of
         [] -> Nothing
         x:_ -> Just x
 
@@ -68,7 +68,7 @@ idLookupOrErr pos id_ = do
 tupleLookupOrErr :: SourcePos -> String -> ResolveM [Decl]
 tupleLookupOrErr pos id_ = do
     tupTable <- tupleTable <$> get
-    case lookup id_ tupTable of
+    case Map.lookup id_ tupTable of
         Just decls -> return decls
         Nothing -> lift . Left $ "Undefined tuple type: `" ++ id_ ++ "` @" ++ show pos
 
@@ -130,9 +130,18 @@ resolveLvalue (Identifier pos id_ ()) = do
     r <- idLookupOrErr pos id_
     return $ Identifier pos id_ r
 resolveLvalue (TupleAccess pos lval id_ ()) = do
-    undefined
-    -- TODO: assert that id_ is of tuple type,
-    -- recursively calculate the offset
+    rLval <- resolveLvalue lval
+    let (tType, tLocation, tPos) = case rLval of
+            Identifier p _ (t, l) -> (t, l, p)
+            TupleAccess p _ _ (t, l) -> (t, l, p)
+    tupleTypeId <- case tType of
+            (TValType (VTTuple x)) -> return x
+            _ -> lift . Left $ "Invalid access on non-tuple type `" ++ show tType ++ "` @" ++ show pos
+    decls <- tupleLookupOrErr tPos tupleTypeId
+    sizePrefixSum <- init . scanl (+) 0 <$> mapM (\(Decl pos_ type_ _id) -> calcTypeSize pos_ (TValType type_)) decls
+    case filter ((\(Decl _pos _type declId) -> id_ == declId) . snd) $ zip sizePrefixSum decls of
+        [] -> lift . Left $ "No such field `" ++ id_ ++ "` on tuple-type `" ++ tupleTypeId
+        (inTupleOffset, Decl _pos declType _id):_ -> return . TupleAccess pos rLval id_ $ (TValType declType, addOffset inTupleOffset tLocation)
 
 resolveStmt :: Stmt () -> ResolveM (Stmt R)
 resolveStmt (Inc pos lval) = Inc pos <$> resolveLvalue lval

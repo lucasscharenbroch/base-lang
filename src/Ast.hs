@@ -12,6 +12,12 @@ data Decl = Decl SourcePos ValueType Id
 
 data Location = Label String
               | Offset Int
+              | LabelPlusOffset String Int
+
+addOffset :: Int -> Location -> Location
+addOffset o (Label s) = LabelPlusOffset s o
+addOffset o (Offset o') = Offset $ o + o'
+addOffset o (LabelPlusOffset s o') = LabelPlusOffset s $ o + o'
 
 -- a = id-associated data
 type Ast a = [TopDecl a]
