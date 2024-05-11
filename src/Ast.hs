@@ -28,13 +28,13 @@ type ResolvedAst = Ast (Type, Location)
 data Type = TVoid
           | TFn [ValueType] Type
           | TValType ValueType
-    deriving (Show)
+    deriving (Show, Eq)
 
 data ValueType = VTInteger
                | VTLogical -- boolean
                | VTString
                | VTTuple Id
-    deriving (Show)
+    deriving (Show, Eq)
 
 data TopDecl a = FnDecl SourcePos Type Id [Decl] (Body a)
                | TupleDef SourcePos Id [Decl]
