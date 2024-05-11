@@ -16,7 +16,7 @@ data ResolutionState = ResolutionState
 
 initialResolutionState :: ResolutionState
 initialResolutionState = ResolutionState
-    { symbolTable = []
+    { symbolTable = [empty]
     , tupleTable = empty
     , localOffset = 0
     }
@@ -48,7 +48,7 @@ addTupleDecl :: SourcePos -> String -> [Decl] -> ResolveM ()
 addTupleDecl pos id_ decls = do
     tupTable <- tupleTable <$> get
     case Map.lookup id_ tupTable of
-        Just _ -> lift . Left $ "Multiply declared tuple type: `" ++ id_ ++ "` @" ++ show pos
+        Just _ -> lift . Left $ "Multiply declared tuple type: `" ++ id_ ++ "` @ " ++ show pos
         Nothing -> modify (\s -> s {tupleTable = insert id_ decls tupTable})
 
 idLookup :: Id -> ResolveM (Maybe R)
@@ -63,20 +63,20 @@ idLookupOrErr pos id_ = do
     maybeR <- idLookup id_
     case maybeR of
         Just r -> return r
-        Nothing -> lift . Left $ "Undefined identifier: `" ++ id_ ++ "` @" ++ show pos
+        Nothing -> lift . Left $ "Undefined identifier: `" ++ id_ ++ "` @ " ++ show pos
 
 tupleLookupOrErr :: SourcePos -> String -> ResolveM [Decl]
 tupleLookupOrErr pos id_ = do
     tupTable <- tupleTable <$> get
     case Map.lookup id_ tupTable of
         Just decls -> return decls
-        Nothing -> lift . Left $ "Undefined tuple type: `" ++ id_ ++ "` @" ++ show pos
+        Nothing -> lift . Left $ "Undefined tuple type: `" ++ id_ ++ "` @ " ++ show pos
 
 assertUniqueId :: SourcePos -> Id -> ResolveM ()
 assertUniqueId pos id_ = do
     maybeMatch <- idLookup id_
     case maybeMatch of
-        Just _ -> lift . Left $ "Multiply declared identifier: `" ++ id_ ++ "` @" ++ show pos
+        Just _ -> lift . Left $ "Multiply declared identifier: `" ++ id_ ++ "` @ " ++ show pos
         Nothing -> return ()
 
 addGlobalDecl :: Decl -> ResolveM ()
@@ -136,11 +136,11 @@ resolveLvalue (TupleAccess pos lval id_ ()) = do
             TupleAccess p _ _ (t, l) -> (t, l, p)
     tupleTypeId <- case tType of
             (TValType (VTTuple x)) -> return x
-            _ -> lift . Left $ "Invalid access on non-tuple type `" ++ show tType ++ "` @" ++ show pos
+            _ -> lift . Left $ "Invalid access on non-tuple type `" ++ show tType ++ "` @ " ++ show pos
     decls <- tupleLookupOrErr tPos tupleTypeId
     sizePrefixSum <- init . scanl (+) 0 <$> mapM (\(Decl pos_ type_ _id) -> calcTypeSize pos_ (TValType type_)) decls
     case filter ((\(Decl _pos _type declId) -> id_ == declId) . snd) $ zip sizePrefixSum decls of
-        [] -> lift . Left $ "No such field `" ++ id_ ++ "` on tuple-type `" ++ tupleTypeId
+        [] -> lift . Left $ "No such field `" ++ id_ ++ "` on tuple-type `" ++ tupleTypeId ++ "`"
         (inTupleOffset, Decl _pos declType _id):_ -> return . TupleAccess pos rLval id_ $ (TValType declType, addOffset inTupleOffset tLocation)
 
 resolveStmt :: Stmt () -> ResolveM (Stmt R)

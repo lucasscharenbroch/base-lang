@@ -13,7 +13,7 @@ import Control.Monad
 main :: IO ()
 main = do
     input <- getContents
-    case parse input of
+    case parse input >>= resolve of
         Left err -> hPutStrLn stderr err
         Right ast -> print ast
 

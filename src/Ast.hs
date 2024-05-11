@@ -13,6 +13,7 @@ data Decl = Decl SourcePos ValueType Id
 data Location = Label String
               | Offset Int
               | LabelPlusOffset String Int
+    deriving (Show)
 
 addOffset :: Int -> Location -> Location
 addOffset o (Label s) = LabelPlusOffset s o
