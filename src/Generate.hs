@@ -1,7 +1,7 @@
 module Generate where
 
 import Ast
-import Resolve (R)
+import Resolve (R, T)
 
 import Data.List (intercalate)
 
@@ -63,8 +63,8 @@ instance Show Instruction where
     show (LoadIdx r0 offset r1) = "lw " ++ show r0 ++ ", " ++ show offset ++ "(" ++ show r1 ++ ")"
     show (StoreLabel r l) = "sw " ++ show r ++ ", " ++ l
     show (LoadLabel r l) = "lw " ++ show r ++ ", " ++ l
-    show (SubtractUnsigned r0 r1 i) = "subu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ i
-    show (AddUnsigned r0 r1 i) = "addu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ i
+    show (SubtractUnsigned r0 r1 i) = "subu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ show i
+    show (AddUnsigned r0 r1 i) = "addu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ show i
     show (Move r0 r1) = "move " ++ show r0 ++ ", " ++ show r1
     show (Jump r) = "jr " ++ show r
     show (JumpLabel l) = "j " ++ l
@@ -95,8 +95,13 @@ data DataDirective = Align Int
 generate :: ResolvedAst -> MipsProgram
 generate = concatMap genTopDecl
 
-genTopDecl :: TopDecl R -> MipsProgram
-genTopDecl = undefined
+genGlobal :: Decl T -> MipsSection
+genGlobal (Decl pos valType id_) = Data []
+
+genTopDecl :: TopDecl R T -> MipsProgram
+genTopDecl (FnDecl pos _type _id decls body) = undefined
+genTopDecl (TupleDef _ _ _) = []
+genTopDecl (Global decl) = [genGlobal decl]
 
 {-
 data TopDecl a = FnDecl SourcePos Type Id [Decl] (Body a)

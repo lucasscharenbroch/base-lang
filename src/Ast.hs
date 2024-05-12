@@ -5,9 +5,9 @@ import Text.Parsec (SourcePos)
 type Error = String
 
 type Id = String
-type Body a = ([Decl], [Stmt a])
+type Body i t = ([Decl t], [Stmt i t])
 
-data Decl = Decl SourcePos ValueType Id
+data Decl t = Decl SourcePos (ValueType t) Id
     deriving (Show) -- TODO remove (all shows)
 
 data Location = Label String
@@ -20,49 +20,50 @@ addOffset o (Label s) = LabelPlusOffset s o
 addOffset o (Offset o') = Offset $ o + o'
 addOffset o (LabelPlusOffset s o') = LabelPlusOffset s $ o + o'
 
--- a = id-associated data
-type Ast a = [TopDecl a]
-type UnresolvedAst = Ast ()
-type ResolvedAst = Ast (Type, Location)
+-- i = id-associated data
+-- t = tuple-type-associated data
+type Ast i t = [TopDecl i t]
+type UnresolvedAst = Ast () ()
+type ResolvedAst = Ast (Type, Location) Int
 
 data Type = TVoid
-          | TFn [ValueType] Type
-          | TValType ValueType
+          | TFn [ValueType ()] Type
+          | TValType (ValueType ())
     deriving (Show, Eq)
 
-data ValueType = VTInteger
-               | VTLogical -- boolean
-               | VTString
-               | VTTuple Id
+data ValueType t = VTInteger
+                 | VTLogical -- boolean
+                 | VTString
+                 | VTTuple Id t
     deriving (Show, Eq)
 
-data TopDecl a = FnDecl SourcePos Type Id [Decl] (Body a)
-               | TupleDef SourcePos Id [Decl]
-               | Global Decl
+data TopDecl i t = FnDecl SourcePos Type Id [Decl t] (Body i t)
+                 | TupleDef SourcePos Id [Decl t]
+                 | Global (Decl t)
     deriving (Show)
 
-data Stmt a = Inc SourcePos (Lvalue a)
-            | Dec SourcePos (Lvalue a)
-            | IfElse SourcePos (Expr a) (Body a) (Maybe (Body a))
-            | While SourcePos (Expr a) (Body a)
-            | Read SourcePos (Lvalue a)
-            | Write SourcePos (Expr a)
-            | Return SourcePos (Maybe (Expr a))
-            | ExprStmt SourcePos (Expr a) -- call, assignment
+data Stmt i t = Inc SourcePos (Lvalue i)
+              | Dec SourcePos (Lvalue i)
+              | IfElse SourcePos (Expr i) (Body i t) (Maybe (Body i t))
+              | While SourcePos (Expr i) (Body i t)
+              | Read SourcePos (Lvalue i)
+              | Write SourcePos (Expr i)
+              | Return SourcePos (Maybe (Expr i))
+              | ExprStmt SourcePos (Expr i) -- call, assignment
     deriving (Show)
 
-data Expr a = LogicalLit SourcePos Bool
+data Expr i = LogicalLit SourcePos Bool
             | IntLit SourcePos Int
             | StringLit SourcePos String
-            | Assignment SourcePos (Lvalue a) (Expr a)
-            | Call SourcePos (Lvalue a) [Expr a]
-            | UnaryExpr SourcePos UnaryOp (Expr a)
-            | BinaryExpr SourcePos BinaryOp (Expr a) (Expr a)
-            | Lvalue SourcePos (Lvalue a)
+            | Assignment SourcePos (Lvalue i) (Expr i)
+            | Call SourcePos (Lvalue i) [Expr i]
+            | UnaryExpr SourcePos UnaryOp (Expr i)
+            | BinaryExpr SourcePos BinaryOp (Expr i) (Expr i)
+            | Lvalue SourcePos (Lvalue i)
     deriving (Show)
 
-data Lvalue a = Identifier SourcePos Id a
-              | TupleAccess SourcePos (Lvalue a) Id a
+data Lvalue i = Identifier SourcePos Id i
+              | TupleAccess SourcePos (Lvalue i) Id i
     deriving (Show)
 
 data UnaryOp = Negate | Not

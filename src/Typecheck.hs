@@ -1,7 +1,7 @@
 module Typecheck where
 
 import Ast
-import Resolve (R)
+import Resolve (R, T)
 
 import Text.Parsec (SourcePos)
 import Data.List (intercalate)
@@ -23,19 +23,19 @@ expectOneOf pos ts t'
 typeCheck :: ResolvedAst -> CheckM ()
 typeCheck = mapM_ checkTopDecl
 
-checkTopDecl :: TopDecl R -> CheckM ()
+checkTopDecl :: TopDecl R T -> CheckM ()
 checkTopDecl (FnDecl _pos retType _id _params body) = checkBody retType body
 checkTopDecl (TupleDef _ _ _) = return ()
 checkTopDecl (Global _) = return ()
 
-checkBody :: Type -> Body R -> CheckM ()
+checkBody :: Type -> Body R T -> CheckM ()
 checkBody retType (_decls, stmts) = mapM_ (checkStmt retType) stmts
 
 checkLvalue :: Lvalue R -> CheckM Type
 checkLvalue (Identifier _pos _id (t, _loc)) = return t
 checkLvalue (TupleAccess _pos _lval _id (t, _loc)) = return t
 
-checkStmt :: Type -> Stmt R -> CheckM ()
+checkStmt :: Type -> Stmt R T -> CheckM ()
 checkStmt _ (Inc pos lval) = checkLvalue lval >>= expectType pos (TValType VTInteger)
 checkStmt _ (Dec pos lval) = checkLvalue lval >>= expectType pos (TValType VTInteger)
 checkStmt _ (Read pos lval) = checkLvalue lval >>= expectType pos (TValType VTInteger)

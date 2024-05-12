@@ -15,12 +15,12 @@ parse = first show . runParser program () "<input>"
 program :: Parser UnresolvedAst
 program = many topDecl <* eof
 
-topDecl :: Parser (TopDecl ())
+topDecl :: Parser (TopDecl () ())
 topDecl = fn
       <|> tupleDef
       <|> global
 
-fn :: Parser (TopDecl ())
+fn :: Parser (TopDecl () ())
 fn = try (FnDecl <$> getPosition <*> returnType <*> identifier <* symbol "{")
  <*> commaSep decl <* symbol "}"
  <*> brackets body
@@ -29,30 +29,30 @@ returnType :: Parser Type
 returnType = TVoid <$ reserved "void"
          <|> TValType <$> valueType
 
-valueType :: Parser ValueType
+valueType :: Parser (ValueType ())
 valueType = VTInteger <$ reserved "integer"
         <|> VTLogical <$ reserved "logical"
         <|> VTString <$ reserved "string"
-        <|> VTTuple <$> (reserved "tuple" *> identifier)
+        <|> VTTuple <$> (reserved "tuple" *> identifier) <*> return ()
 
-tupleDef :: Parser (TopDecl ())
+tupleDef :: Parser (TopDecl () ())
 tupleDef = TupleDef <$> getPosition <*> try (reserved "tuple" *> identifier <* symbol "{")
        <*> many declDot <* symbol "}"
        <* dot
 
-global :: Parser (TopDecl ())
+global :: Parser (TopDecl () ())
 global = Global <$> declDot
 
-decl :: Parser Decl
+decl :: Parser (Decl ())
 decl = Decl <$> getPosition <*> valueType <*> identifier
 
-declDot :: Parser Decl
+declDot :: Parser (Decl ())
 declDot = decl <* dot
 
-body :: Parser (Body ())
+body :: Parser (Body () ())
 body = (,) <$> many declDot <*> many stmt
 
-stmt :: Parser (Stmt ())
+stmt :: Parser (Stmt () ())
 stmt = IfElse <$> getPosition <*> (reserved "if" *> expr) <*> brackets body <*> optionMaybe (reserved "else" *> brackets body)
    <|> While <$> getPosition <*> (reserved "while" *> expr) <*> brackets body
    <|> Read <$> getPosition <*> (reserved "read" *> reservedOp ">>" *> lvalue) <* dot
