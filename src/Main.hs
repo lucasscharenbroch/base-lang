@@ -13,7 +13,7 @@ import Control.Monad
 main :: IO ()
 main = do
     input <- getContents
-    case parse input >>= resolve of
+    case parse input >>= resolve >>= \ast -> typeCheck ast >> return ast of
         Left err -> hPutStrLn stderr err
         Right ast -> print ast
 
@@ -21,4 +21,4 @@ compile :: String -> Either Error MipsProgram
 compile = parse >=>
           resolve >=>
           (\ast -> typeCheck ast >> return ast) >=>
-          generate
+          pure . generate
