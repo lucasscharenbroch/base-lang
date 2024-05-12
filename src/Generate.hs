@@ -3,15 +3,27 @@ module Generate where
 import Ast
 import Resolve (R)
 
+import Data.List (intercalate)
+
 type MipsProgram = [MipsSection]
 
 data MipsSection = Text [Instruction]
                  | Data [DataDirective]
 
 data Register = T0 | T1 | V0 | RA | SP | FP
+
+instance Show Register where
+    show T0 = "$t0"
+    show T1 = "$t1"
+    show V0 = "$v0"
+    show RA = "$ra"
+    show SP = "$sp"
+    show FP = "$fp"
+
 type Label = String
 
 data Instruction = TextLabel Label
+                 | MainFnLabel
                  | Comment String
                  | Commented Instruction
                  | StoreIdx Register Int Register -- sw $ra, 0($sp)
@@ -24,12 +36,61 @@ data Instruction = TextLabel Label
                  | Jump Register -- jr $ra
                  | JumpLabel Label -- j _f
                  | LoadImm Register Int -- li $v0, 1
-                 | Syscall
-                -- | -- TODO: all used instructions
+                 | AddImm Register Register Int -- addi $t0, $t0, 1
+                 | BranchEqZ Register Label -- beqz $t0, _L14
+                 | BranchNeZ Register Label -- bnez $t0, _L14
+                 | Branch Label -- b _L14
+                 | LoadAddress Register Label -- la $t0, _g
+                 | SetEq Register Register Register -- seq $t0, $t0, $t1
+                 | SetNe Register Register Register -- sne $t0, $t0, $t1
+                 | SetGt Register Register Register -- sgt $t0, $t0, $t1
+                 | SetGe Register Register Register -- sge $t0, $t0, $t1
+                 | SetLt Register Register Register -- slt $t0, $t0, $t1
+                 | SetLe Register Register Register -- sle $t0, $t0, $t1
+                 | Negate Register Register -- neg $t0, $t0
+                 | Add Register Register Register -- add $t0, $t0, $t1
+                 | Sub Register Register Register -- sub $t0, $t0, $t1
+                 | Mul Register Register Register -- mul $t0, $t0, $t1
+                 | Div Register Register Register -- div $t0, $t0, $t1
+                 | Syscall -- syscall
+
+instance Show Instruction where
+    show (TextLabel l) = l ++ ":"
+    show MainFnLabel = ".globl main\nmain:"
+    show (Comment c) = "# " ++ c
+    show (Commented i) = "# " ++ show i
+    show (StoreIdx r0 offset r1) = "sw " ++ show r0 ++ ", " ++ show offset ++ "(" ++ show r1 ++ ")"
+    show (LoadIdx r0 offset r1) = "lw " ++ show r0 ++ ", " ++ show offset ++ "(" ++ show r1 ++ ")"
+    show (StoreLabel r l) = "sw " ++ show r ++ ", " ++ l
+    show (LoadLabel r l) = "lw " ++ show r ++ ", " ++ l
+    show (SubtractUnsigned r0 r1 i) = "subu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ i
+    show (AddUnsigned r0 r1 i) = "addu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ i
+    show (Move r0 r1) = "move " ++ show r0 ++ ", " ++ show r1
+    show (Jump r) = "jr " ++ show r
+    show (JumpLabel l) = "j " ++ l
+    show (LoadImm r i) = "li " ++ show r ++ ", " ++ show i
+    show (AddImm r0 r1 i) = "addi " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ show i
+    show (BranchEqZ r l) = "beqz " ++ show r ++ ", " ++ l
+    show (BranchNeZ r l) = "bnez " ++ show r ++ ", " ++ l
+    show (Branch l) = "b" ++ l
+    show (LoadAddress r l) = "la " ++ show r ++ ", " ++ l
+    show (SetEq r0 r1 r2) = "seq " ++ intercalate ", " (map show [r0, r1, r2])
+    show (SetNe r0 r1 r2) = "sne " ++ intercalate ", " (map show [r0, r1, r2])
+    show (SetGt r0 r1 r2) = "sgt " ++ intercalate ", " (map show [r0, r1, r2])
+    show (SetGe r0 r1 r2) = "sge " ++ intercalate ", " (map show [r0, r1, r2])
+    show (SetLt r0 r1 r2) = "slt " ++ intercalate ", " (map show [r0, r1, r2])
+    show (SetLe r0 r1 r2) = "sle " ++ intercalate ", " (map show [r0, r1, r2])
+    show (Generate.Add r0 r1 r2) = "add " ++ intercalate ", " (map show [r0, r1, r2])
+    show (Generate.Sub r0 r1 r2) = "sub " ++ intercalate ", " (map show [r0, r1, r2])
+    show (Generate.Mul r0 r1 r2) = "mul " ++ intercalate ", " (map show [r0, r1, r2])
+    show (Generate.Div r0 r1 r2) = "div " ++ intercalate ", " (map show [r0, r1, r2])
+    show (Generate.Negate r0 r1) = "neg " ++ show r0 ++ ", " ++ show r1
+    show Syscall = "syscall"
 
 data DataDirective = Align Int
                    | DataLabel Label
                    | Asciiz String
+                   | Space Int
 
 generate :: ResolvedAst -> MipsProgram
 generate = concatMap genTopDecl
