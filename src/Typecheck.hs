@@ -61,7 +61,30 @@ checkExpr (IntLit _ _) = return $ TValType VTInteger
 checkExpr (StringLit _ _) = return $ TValType VTString
 checkExpr (Assignment pos lval expr) = expectType pos <$> checkLvalue lval <*> exprType >> exprType
     where exprType = checkExpr expr
-checkExpr (Call pos lval args) = undefined -- TODO
-checkExpr (UnaryExpr pos op expr) = undefined -- TODO
-checkExpr (BinaryExpr pos op left right) = undefined -- TODO
-checkExpr (Lvalue pos lval) = checkLvalue lval
+checkExpr (Call pos lval args) = do
+    lvalType <- checkLvalue lval
+    argTypes <- mapM checkExpr args
+    case lvalType of
+        TFn paramValueTypes retType
+            | nGiven /= nExpected -> Left $ "Wrong number of arguments to function `" ++ show lval ++ "` :" ++
+                                            "got " ++ show nGiven ++ ", expected " ++ show nExpected ++ " @ " ++ show pos
+            | or $ zipWith (/=) argTypes paramTypes -> Left $ "Misaligned argument types: expected " ++ show paramTypes ++
+                                                              ", got " ++ show argTypes ++ " @ " ++ show pos
+            | otherwise -> return retType
+            where nGiven = length argTypes
+                  nExpected = length paramValueTypes
+                  paramTypes = map TValType paramValueTypes
+        _ -> Left $ "Invalid call of non-function lvalue `" ++ show lval ++
+                    "`, of type `" ++ show lvalType ++ "` @ " ++ show pos
+checkExpr (UnaryExpr pos op expr) = checkExpr expr >>= checkUnaryOp pos op
+checkExpr (BinaryExpr pos op left right) = do
+    left' <- checkExpr left
+    right' <- checkExpr right
+    checkBinaryOp pos op left' right'
+checkExpr (Lvalue _pos lval) = checkLvalue lval
+
+checkBinaryOp :: SourcePos -> BinaryOp -> Type -> Type -> CheckM Type
+checkBinaryOp pos op left right = undefined
+
+checkUnaryOp :: SourcePos -> UnaryOp -> Type -> CheckM Type
+checkUnaryOp pos op arg = undefined
