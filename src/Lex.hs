@@ -9,8 +9,7 @@ lexer :: Tok.TokenParser ()
 lexer = makeTokenParser $ Tok.LanguageDef
     { commentStart = ""
     , commentEnd = ""
-    , commentLine = "" -- there are two ways to have a comment line: (!!) and ($)
-                       -- handle these manually
+    , commentLine = "$"
     , nestedComments = False
     , identStart = letter <|> char '_'
     , identLetter = letter <|> digit <|> char '_'
