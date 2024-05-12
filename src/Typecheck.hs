@@ -84,7 +84,28 @@ checkExpr (BinaryExpr pos op left right) = do
 checkExpr (Lvalue _pos lval) = checkLvalue lval
 
 checkBinaryOp :: SourcePos -> BinaryOp -> Type -> Type -> CheckM Type
-checkBinaryOp pos op left right = undefined
+checkBinaryOp pos op left right = case op of
+    Add -> checkArith
+    Sub -> checkArith
+    Mul -> checkArith
+    Div -> checkArith
+    Eq -> checkCmp
+    Ne -> checkCmp
+    Gt -> checkCmp
+    Ge -> checkCmp
+    Lt -> checkCmp
+    Le -> checkCmp
+    And -> checkLogical
+    Or -> checkLogical
+    where comparable = [int, bool, str]
+          int = TValType VTInteger
+          bool = TValType VTLogical
+          str = TValType VTString
+          checkArith = mapM_ (expectType pos int) [left, right] >> return int
+          checkCmp = expectOneOf pos comparable left >> expectType pos left right >> return bool
+          checkLogical = mapM_ (expectType pos bool) [left, right] >> return bool
 
 checkUnaryOp :: SourcePos -> UnaryOp -> Type -> CheckM Type
-checkUnaryOp pos op arg = undefined
+checkUnaryOp pos op arg = case op of
+    Negate -> expectType pos (TValType VTInteger) arg >> return arg
+    Not -> expectType pos (TValType VTLogical) arg >> return arg
