@@ -4,6 +4,7 @@ import Ast
 import Resolve (R, T)
 
 import Data.List (intercalate, singleton)
+import Data.Maybe (fromMaybe)
 import Text.Parsec (SourcePos)
 import Control.Monad.State.Lazy
 
@@ -159,25 +160,23 @@ genMutImmAdd pos n lval = genExpr (Lvalue pos lval) ++ genAddr lval ++ [
         StoreIdx T1 0 T0
     ]
 
-{-
-exprValByteSize :: Expr R -> Int
-exprValByteSize LogicalLit{} = 4
-exprValByteSize IntLit{} = 4
-exprValByteSize StringLit{} = 4
-exprValByteSize UnaryExpr{} = 4
-exprValByteSize BinaryExpr{} = 4
-exprValByteSize (Assignment pos lval _rhs) = exprValByteSize (Lvalue pos lval)
-exprValByteSize (Call pos lval _params) = undefined
-exprValByteSize (Lvalue pos lval) = undefined
--}
-
 genBody :: Label -> Body R T -> GenM [Instruction]
 genBody retLabel = pure . concat <=< mapM (genStmt retLabel) . snd
 
 genStmt :: Label -> Stmt R T -> GenM [Instruction]
 genStmt _ (Inc pos lval) = return $ genMutImmAdd pos 1 lval
 genStmt _ (Dec pos lval) = return $ genMutImmAdd pos (-1) lval
-genStmt _ (IfElse _pos cond body maybeBody) = return . genExpr $ cond
+genStmt retLabel (IfElse _pos cond body maybeBody) = do
+    elseLabel <- freshLabel
+    doneLabel <- freshLabel
+    thenBody <- genBody retLabel body
+    elseBody <- fromMaybe [] <$> mapM (genBody retLabel) maybeBody
+    return $ genExpr cond ++
+             [Pop T0, BranchEqZ T0 elseLabel] ++
+             thenBody ++
+             [Branch doneLabel, Commented (TextLabel doneLabel) "Else"] ++
+             elseBody ++
+             [Commented (TextLabel doneLabel) "Done"]
 genStmt retLabel (While _pos cond body) = do
     beginLabel <- freshLabel
     doneLabel <- freshLabel
