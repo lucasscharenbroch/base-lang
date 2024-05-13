@@ -24,7 +24,7 @@ typeCheck :: ResolvedAst -> CheckM ()
 typeCheck = mapM_ checkTopDecl
 
 checkTopDecl :: TopDecl R T -> CheckM ()
-checkTopDecl (FnDecl _pos retType _id _params body) = checkBody retType body
+checkTopDecl (FnDecl _pos retType _id _params body _numLocals) = checkBody retType body
 checkTopDecl (TupleDef _ _ _) = return ()
 checkTopDecl (Global _) = return ()
 

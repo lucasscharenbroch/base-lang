@@ -24,6 +24,7 @@ fn :: Parser (TopDecl () ())
 fn = try (FnDecl <$> getPosition <*> returnType <*> identifier <* symbol "{")
  <*> commaSep decl <* symbol "}"
  <*> brackets body
+ <*> return ()
 
 returnType :: Parser Type
 returnType = TVoid <$ reserved "void"

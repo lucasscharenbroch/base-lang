@@ -110,9 +110,6 @@ vTypeSizeInBytes :: ValueType T -> Int
 vTypeSizeInBytes (VTTuple _ sz) = sz * 4
 vTypeSizeInBytes _ = 4
 
-declSizeInBytes :: Decl T -> Int
-declSizeInBytes (Decl _pos valType _id) = vTypeSizeInBytes valType
-
 generate :: ResolvedAst -> MipsProgram
 generate = concat . flip evalState labels . mapM genTopDecl
     where labels = map (("L"++) . show) [0..]
@@ -123,8 +120,8 @@ genGlobal (Decl _pos valType id_) = Data [Align 2, DataLabel $ "_" ++ id_, Space
 genTopDecl :: TopDecl R T -> GenM MipsProgram
 genTopDecl (TupleDef _ _ _) = return []
 genTopDecl (Global decl) = return [genGlobal decl]
-genTopDecl (FnDecl _pos _type id_ _paramDecls (localDecls, bodyStmts)) = do
-    generatedBody <- concat <$> mapM (genStmt exitLabel) bodyStmts
+genTopDecl (FnDecl _pos _type id_ _paramDecls body numLocalBytes) = do
+    generatedBody <- genBody exitLabel body
     return . singleton . Text $ [
             -- "Preamble"
             fnLabel,
@@ -149,7 +146,7 @@ genTopDecl (FnDecl _pos _type id_ _paramDecls (localDecls, bodyStmts)) = do
               | id_ == "main" = MainFnLabel
               | otherwise = TextLabel $ "_" ++ id_
           exitLabel = "_" ++ id_ ++ "_EXIT"
-          localsSize = sum . map declSizeInBytes $ localDecls
+          localsSize = 4 * numLocalBytes
           returnInstruction
               | id_ == "main" = MainReturn
               | otherwise = Jump RA
@@ -174,11 +171,22 @@ exprValByteSize (Call pos lval _params) = undefined
 exprValByteSize (Lvalue pos lval) = undefined
 -}
 
+genBody :: Label -> Body R T -> GenM [Instruction]
+genBody retLabel = pure . concat <=< mapM (genStmt retLabel) . snd
+
 genStmt :: Label -> Stmt R T -> GenM [Instruction]
 genStmt _ (Inc pos lval) = return $ genMutImmAdd pos 1 lval
 genStmt _ (Dec pos lval) = return $ genMutImmAdd pos (-1) lval
 genStmt _ (IfElse _pos cond body maybeBody) = return . genExpr $ cond
-genStmt _ (While _pos cond body) = undefined
+genStmt retLabel (While _pos cond body) = do
+    beginLabel <- freshLabel
+    doneLabel <- freshLabel
+    generatedBody <- genBody retLabel body
+    return $ [Commented (TextLabel beginLabel) "Begin while"] ++
+             genExpr cond ++
+             [Pop T0, BranchEqZ T0 doneLabel] ++
+             generatedBody ++
+             [Commented (TextLabel doneLabel) "End while"]
 genStmt _ (Read _pos lval) = undefined
 genStmt _ (Write _pos expr) = undefined
 genStmt _ (ExprStmt _pos expr) = undefined

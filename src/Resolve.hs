@@ -118,11 +118,14 @@ allocateLocalSpace n = do
     modify (\s -> s {localOffset = oldCnt + n})
     return . Offset $ oldCnt
 
+resetLocalOffset :: ResolveM Int
+resetLocalOffset = localOffset <$> get <* modify (\s -> s {localOffset = 0})
+
 resolveTopDecl :: TopDecl () () -> ResolveM (TopDecl R T)
-resolveTopDecl (FnDecl pos retType id_ params body) = do
+resolveTopDecl (FnDecl pos retType id_ params body ()) = do
     let paramTypes = map (\(Decl _ type_ _ ) -> type_) params
     addGlobalId pos (TFn paramTypes retType) id_
-    FnDecl pos retType id_ <$> mapM resolveDecl params <*> resolveBody body
+    FnDecl pos retType id_ <$> mapM resolveDecl params <*> resolveBody body <*> resetLocalOffset
 resolveTopDecl (TupleDef pos id_ decls) = addTupleDecl pos id_ decls >> TupleDef pos id_ <$> mapM resolveDecl decls
 resolveTopDecl (Global decl) = addGlobalDecl decl >> Global <$> resolveDecl decl
 

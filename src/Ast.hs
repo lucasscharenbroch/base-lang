@@ -21,7 +21,7 @@ addOffset o (Offset o') = Offset $ o + o'
 addOffset o (LabelPlusOffset s o') = LabelPlusOffset s $ o + o'
 
 -- i = id-associated data
--- t = tuple-type-associated data
+-- t = type-size data (tuple types, function declarations)
 type Ast i t = [TopDecl i t]
 type UnresolvedAst = Ast () ()
 type ResolvedAst = Ast (Type, Location) Int
@@ -37,7 +37,7 @@ data ValueType t = VTInteger
                  | VTTuple Id t
     deriving (Show, Eq)
 
-data TopDecl i t = FnDecl SourcePos Type Id [Decl t] (Body i t)
+data TopDecl i t = FnDecl SourcePos Type Id [Decl t] (Body i t) t
                  | TupleDef SourcePos Id [Decl t]
                  | Global (Decl t)
     deriving (Show)
