@@ -4,8 +4,11 @@ import Ast
 import Resolve (R, T)
 
 import Data.List (intercalate, singleton)
+import Text.Parsec (SourcePos)
+import Control.Monad.State.Lazy
 
 type MipsProgram = [MipsSection]
+type GenM = State [Label]
 
 data MipsSection = Text [Instruction]
                  | Data [DataDirective]
@@ -100,6 +103,9 @@ data DataDirective = Align Int
                    | Asciiz String
                    | Space Int
 
+freshLabel :: GenM Label
+freshLabel = head <$> get <* modify tail
+
 vTypeSizeInBytes :: ValueType T -> Int
 vTypeSizeInBytes (VTTuple _ sz) = sz * 4
 vTypeSizeInBytes _ = 4
@@ -108,34 +114,37 @@ declSizeInBytes :: Decl T -> Int
 declSizeInBytes (Decl _pos valType _id) = vTypeSizeInBytes valType
 
 generate :: ResolvedAst -> MipsProgram
-generate = concatMap genTopDecl
+generate = concat . flip evalState labels . mapM genTopDecl
+    where labels = map (("L"++) . show) [0..]
 
 genGlobal :: Decl T -> MipsSection
 genGlobal (Decl _pos valType id_) = Data [Align 2, DataLabel $ "_" ++ id_, Space $ vTypeSizeInBytes valType]
 
-genTopDecl :: TopDecl R T -> MipsProgram
-genTopDecl (TupleDef _ _ _) = []
-genTopDecl (Global decl) = [genGlobal decl]
-genTopDecl (FnDecl _pos _type id_ _paramDecls (localDecls, bodyStmts)) = singleton . Text $ [
-        -- "Preamble"
-        fnLabel,
-        -- "Prelude"
-        Push RA,
-        Push FP,
-        AddUnsigned FP SP 8,
-        SubUnsigned SP SP localsSize,
-        -- Body
-        Comment $ "Begin function body " ++ id_
-    ] ++ concatMap (genStmt exitLabel) bodyStmts ++ [
-        Comment $ "End function body " ++ id_,
-        -- Exit
-        TextLabel exitLabel,
-        LoadIdx RA 0 FP,
-        Move T0 FP,
-        LoadIdx FP (-4) FP,
-        Move SP T0,
-        returnInstruction
-    ]
+genTopDecl :: TopDecl R T -> GenM MipsProgram
+genTopDecl (TupleDef _ _ _) = return []
+genTopDecl (Global decl) = return [genGlobal decl]
+genTopDecl (FnDecl _pos _type id_ _paramDecls (localDecls, bodyStmts)) = do
+    generatedBody <- concat <$> mapM (genStmt exitLabel) bodyStmts
+    return . singleton . Text $ [
+            -- "Preamble"
+            fnLabel,
+            -- "Prelude"
+            Push RA,
+            Push FP,
+            AddUnsigned FP SP 8,
+            SubUnsigned SP SP localsSize,
+            -- Body
+            Comment $ "Begin function body " ++ id_
+        ] ++ generatedBody ++ [
+            Comment $ "End function body " ++ id_,
+            -- Exit
+            TextLabel exitLabel,
+            LoadIdx RA 0 FP,
+            Move T0 FP,
+            LoadIdx FP (-4) FP,
+            Move SP T0,
+            returnInstruction
+        ]
     where fnLabel
               | id_ == "main" = MainFnLabel
               | otherwise = TextLabel $ "_" ++ id_
@@ -145,5 +154,39 @@ genTopDecl (FnDecl _pos _type id_ _paramDecls (localDecls, bodyStmts)) = singlet
               | id_ == "main" = MainReturn
               | otherwise = Jump RA
 
-genStmt :: Label -> Stmt R T -> [Instruction]
-genStmt = undefined
+genMutImmAdd :: SourcePos -> Int -> Lvalue R -> [Instruction]
+genMutImmAdd pos n lval = genExpr (Lvalue pos lval) ++ genAddr lval ++ [
+        Pop T0,
+        Pop T1,
+        AddImm T1 T1 n,
+        StoreIdx T1 0 T0
+    ]
+
+{-
+exprValByteSize :: Expr R -> Int
+exprValByteSize LogicalLit{} = 4
+exprValByteSize IntLit{} = 4
+exprValByteSize StringLit{} = 4
+exprValByteSize UnaryExpr{} = 4
+exprValByteSize BinaryExpr{} = 4
+exprValByteSize (Assignment pos lval _rhs) = exprValByteSize (Lvalue pos lval)
+exprValByteSize (Call pos lval _params) = undefined
+exprValByteSize (Lvalue pos lval) = undefined
+-}
+
+genStmt :: Label -> Stmt R T -> GenM [Instruction]
+genStmt _ (Inc pos lval) = return $ genMutImmAdd pos 1 lval
+genStmt _ (Dec pos lval) = return $ genMutImmAdd pos (-1) lval
+genStmt _ (IfElse _pos cond body maybeBody) = return . genExpr $ cond
+genStmt _ (While _pos cond body) = undefined
+genStmt _ (Read _pos lval) = undefined
+genStmt _ (Write _pos expr) = undefined
+genStmt _ (ExprStmt _pos expr) = undefined
+genStmt retLabel (Return _pos (Just expr)) = return $ genExpr expr ++ [JumpLabel retLabel]
+genStmt retLabel (Return _pos Nothing) = return [JumpLabel retLabel]
+
+genAddr :: Lvalue R -> [Instruction]
+genAddr = undefined
+
+genExpr :: Expr R -> [Instruction]
+genExpr = undefined
