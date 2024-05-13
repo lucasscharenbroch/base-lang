@@ -3,7 +3,7 @@ module Generate where
 import Ast
 import Resolve (R, T)
 
-import Data.List (intercalate)
+import Data.List (intercalate, singleton)
 
 type MipsProgram = [MipsSection]
 
@@ -25,12 +25,12 @@ type Label = String
 data Instruction = TextLabel Label
                  | MainFnLabel
                  | Comment String
-                 | Commented Instruction
+                 | Commented Instruction String
                  | StoreIdx Register Int Register -- sw $ra, 0($sp)
                  | LoadIdx Register Int Register -- lw $ra, 0($fp)
                  | StoreLabel Register Label -- sw $t0, _x
                  | LoadLabel Register Label -- lw $t0, _x
-                 | SubtractUnsigned Register Register Int -- subu $sp, $sp, 4
+                 | SubUnsigned Register Register Int -- subu $sp, $sp, 4
                  | AddUnsigned Register Register Int -- addu $sp, $sp, 4
                  | Move Register Register -- move $t0, $t1
                  | Jump Register -- jr $ra
@@ -52,18 +52,22 @@ data Instruction = TextLabel Label
                  | Sub Register Register Register -- sub $t0, $t0, $t1
                  | Mul Register Register Register -- mul $t0, $t0, $t1
                  | Div Register Register Register -- div $t0, $t0, $t1
+                 | Push Register -- lw $r0 0($sp) \n subu $sp $sp 4
+                 | Pop Register -- lw $r0 4($sp) \n addu $sp $sp 4
+                 | Pop_ -- addu $sp $sp 4
                  | Syscall -- syscall
+                 | MainReturn -- li $v0 10 \n syscall
 
 instance Show Instruction where
     show (TextLabel l) = l ++ ":"
     show MainFnLabel = ".globl main\nmain:"
     show (Comment c) = "# " ++ c
-    show (Commented i) = "# " ++ show i
+    show (Commented i c) = show i ++ "# " ++ c
     show (StoreIdx r0 offset r1) = "sw " ++ show r0 ++ ", " ++ show offset ++ "(" ++ show r1 ++ ")"
     show (LoadIdx r0 offset r1) = "lw " ++ show r0 ++ ", " ++ show offset ++ "(" ++ show r1 ++ ")"
     show (StoreLabel r l) = "sw " ++ show r ++ ", " ++ l
     show (LoadLabel r l) = "lw " ++ show r ++ ", " ++ l
-    show (SubtractUnsigned r0 r1 i) = "subu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ show i
+    show (SubUnsigned r0 r1 i) = "subu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ show i
     show (AddUnsigned r0 r1 i) = "addu " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ show i
     show (Move r0 r1) = "move " ++ show r0 ++ ", " ++ show r1
     show (Jump r) = "jr " ++ show r
@@ -85,26 +89,61 @@ instance Show Instruction where
     show (Generate.Mul r0 r1 r2) = "mul " ++ intercalate ", " (map show [r0, r1, r2])
     show (Generate.Div r0 r1 r2) = "div " ++ intercalate ", " (map show [r0, r1, r2])
     show (Generate.Negate r0 r1) = "neg " ++ show r0 ++ ", " ++ show r1
+    show (Push r) = show (Commented (LoadIdx r 0 SP) ("Push " ++ show r)) ++ "\n" ++ show (SubUnsigned  SP SP 4)
+    show (Pop r) = show (Commented (LoadIdx r 4 SP) ("Pop " ++ show r)) ++ "\n" ++ show (AddUnsigned  SP SP 4)
+    show Pop_ = show (Commented (AddUnsigned SP SP 4) "Pop _")
     show Syscall = "syscall"
+    show MainReturn = intercalate "\n" . map show $ [LoadImm V0 10, Syscall]
 
 data DataDirective = Align Int
                    | DataLabel Label
                    | Asciiz String
                    | Space Int
 
+vTypeSizeInBytes :: ValueType T -> Int
+vTypeSizeInBytes (VTTuple _ sz) = sz * 4
+vTypeSizeInBytes _ = 4
+
+declSizeInBytes :: Decl T -> Int
+declSizeInBytes (Decl _pos valType _id) = vTypeSizeInBytes valType
+
 generate :: ResolvedAst -> MipsProgram
 generate = concatMap genTopDecl
 
 genGlobal :: Decl T -> MipsSection
-genGlobal (Decl pos valType id_) = Data []
+genGlobal (Decl _pos valType id_) = Data [Align 2, DataLabel $ "_" ++ id_, Space $ vTypeSizeInBytes valType]
 
 genTopDecl :: TopDecl R T -> MipsProgram
-genTopDecl (FnDecl pos _type _id decls body) = undefined
 genTopDecl (TupleDef _ _ _) = []
 genTopDecl (Global decl) = [genGlobal decl]
+genTopDecl (FnDecl _pos _type id_ _paramDecls (localDecls, bodyStmts)) = singleton . Text $ [
+        -- "Preamble"
+        fnLabel,
+        -- "Prelude"
+        Push RA,
+        Push FP,
+        AddUnsigned FP SP 8,
+        SubUnsigned SP SP localsSize,
+        -- Body
+        Comment $ "Begin function body " ++ id_
+    ] ++ concatMap (genStmt exitLabel) bodyStmts ++ [
+        Comment $ "End function body " ++ id_,
+        -- Exit
+        TextLabel exitLabel,
+        LoadIdx RA 0 FP,
+        Move T0 FP,
+        LoadIdx FP (-4) FP,
+        Move SP T0,
+        returnInstruction
+    ]
+    where fnLabel
+              | id_ == "main" = MainFnLabel
+              | otherwise = TextLabel $ "_" ++ id_
+          exitLabel = "_" ++ id_ ++ "_EXIT"
+          localsSize = sum . map declSizeInBytes $ localDecls
+          returnInstruction
+              | id_ == "main" = MainReturn
+              | otherwise = Jump RA
 
-{-
-data TopDecl a = FnDecl SourcePos Type Id [Decl] (Body a)
-               | TupleDef SourcePos Id [Decl]
-               | Global Decl
--}
+genStmt :: Label -> Stmt R T -> [Instruction]
+genStmt = undefined
