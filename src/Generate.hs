@@ -157,6 +157,10 @@ vTypeSizeInBytes :: ValueType T -> Int
 vTypeSizeInBytes (VTTuple _ sz) = sz * 4
 vTypeSizeInBytes _ = 4
 
+typeSizeInBytes :: Type T -> Int
+typeSizeInBytes (TValType vt) = vTypeSizeInBytes vt
+typeSizeInBytes _ = 0
+
 generate :: ResolvedAst -> MipsProgram
 generate ast = (concat instructionss, dataDirectives resState)
     where (instructionss, resState) = runState (mapM genTopDecl ast) initialGenState
@@ -167,7 +171,7 @@ genGlobal (Decl _pos valType id_) = addData [Align 2, DataLabel $ "_" ++ id_, Sp
 genTopDecl :: TopDecl R T -> GenM [Instruction]
 genTopDecl (TupleDef _ _ _) = return []
 genTopDecl (Global decl) = genGlobal decl >> return []
-genTopDecl (FnDecl _pos _type id_ _paramDecls body numLocalBytes) = do
+genTopDecl (FnDecl _pos retType id_ _paramDecls body numLocalBytes) = do
     generatedBody <- genBody exitLabel body
     return $ [
             -- "Preamble"
@@ -182,12 +186,12 @@ genTopDecl (FnDecl _pos _type id_ _paramDecls body numLocalBytes) = do
         ] ++ generatedBody ++ [
             Comment $ "End function body " ++ id_,
             -- Exit
-            -- TODO do stack gymnastics to move the return value (of arbitrary size) upward
             TextLabel exitLabel,
             LoadIdx RA 0 FP,
             Move T0 FP,
             LoadIdx FP (-4) FP,
-            Move SP T0,
+            RotateStack returnSize (2 + localsSize + returnSize),
+            PopN_ (2 + localsSize),
             returnInstruction
         ]
     where fnLabel
@@ -195,6 +199,7 @@ genTopDecl (FnDecl _pos _type id_ _paramDecls body numLocalBytes) = do
               | otherwise = TextLabel $ "_" ++ id_
           exitLabel = "_" ++ id_ ++ "_EXIT"
           localsSize = 4 * numLocalBytes
+          returnSize = typeSizeInBytes retType
           returnInstruction
               | id_ == "main" = MainReturn
               | otherwise = Jump RA
@@ -248,6 +253,7 @@ getLvalueLocation (TupleAccess _ _ _ (_, x)) = x
 getLvalueNumWords :: Lvalue R -> Int
 getLvalueNumWords (Identifier _ _ ((TValType vType), _)) = vTypeSizeInBytes vType `div` 4
 getLvalueNumWords (TupleAccess _ _ _ ((TValType vType), _)) = vTypeSizeInBytes vType `div` 4
+getLvalueNumWords _ = 0
 
 genAddr :: Lvalue R -> [Instruction]
 genAddr lval = genAddrFromLocation $ getLvalueLocation lval
