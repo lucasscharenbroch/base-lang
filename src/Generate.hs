@@ -45,6 +45,8 @@ data Instruction = TextLabel Label
                  | BranchNeZ Register Label -- bnez $t0, _L14
                  | Branch Label -- b _L14
                  | LoadAddress Register Label -- la $t0, _g
+                 | LoadAddressPlusOffset Register Label Int -- la $t0, (_g + 1)
+                 | LoadAddressIdx Register Int Register -- la $t0, 0($t1)
                  | SetEq Register Register Register -- seq $t0, $t0, $t1
                  | SetNe Register Register Register -- sne $t0, $t0, $t1
                  | SetGt Register Register Register -- sgt $t0, $t0, $t1
@@ -82,6 +84,8 @@ instance Show Instruction where
     show (BranchNeZ r l) = "bnez " ++ show r ++ ", " ++ l
     show (Branch l) = "b" ++ l
     show (LoadAddress r l) = "la " ++ show r ++ ", " ++ l
+    show (LoadAddressPlusOffset r l o) = "la " ++ show r ++ ", (" ++ l ++ " + " ++ show o ++ ")"
+    show (LoadAddressIdx r0 offset r1) = "la " ++ show r0 ++ ", " ++ show offset ++ "(" ++ show r1 ++ ")"
     show (SetEq r0 r1 r2) = "seq " ++ intercalate ", " (map show [r0, r1, r2])
     show (SetNe r0 r1 r2) = "sne " ++ intercalate ", " (map show [r0, r1, r2])
     show (SetGt r0 r1 r2) = "sgt " ++ intercalate ", " (map show [r0, r1, r2])
@@ -192,8 +196,16 @@ genStmt _ (ExprStmt _pos expr) = undefined
 genStmt retLabel (Return _pos (Just expr)) = return $ genExpr expr ++ [JumpLabel retLabel]
 genStmt retLabel (Return _pos Nothing) = return [JumpLabel retLabel]
 
+getLvalueLocation :: Lvalue R -> Location
+getLvalueLocation (Identifier _ _ (_, x)) = x
+getLvalueLocation (TupleAccess _ _ _ (_, x)) = x
+
 genAddr :: Lvalue R -> [Instruction]
-genAddr = undefined
+genAddr lval = case getLvalueLocation lval of
+    Label label -> [LoadAddress T0 label, Push T0]
+    LabelPlusOffset label offset -> [LoadAddressPlusOffset T0 label offset, Push T0]
+    LocalOffset nWords -> [LoadAddressIdx T0 (-8 + nWords * (-4)) FP]
+    ParamOffset nWords -> [LoadAddressIdx T0 (4 + nWords * 4) FP]
 
 genExpr :: Expr R -> [Instruction]
 genExpr = undefined

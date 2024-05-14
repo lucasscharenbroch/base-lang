@@ -96,6 +96,11 @@ addLocalDecl (Decl pos vType id_) = do
     location <- allocateLocalSpace typeSize
     modifySymTable (\st -> insert id_ (TValType vType, location) (head st) : tail st)
 
+addParamDecl :: Decl () -> Int -> ResolveM ()
+addParamDecl (Decl _pos vType id_) offset = do
+    let location = ParamOffset offset
+    modifySymTable (\st -> insert id_ (TValType vType, location) (head st) : tail st)
+
 calcVTypeSize :: ValueType () -> ResolveM Int
 calcVTypeSize VTInteger = return 1
 calcVTypeSize VTLogical = return 1
@@ -116,7 +121,7 @@ allocateLocalSpace :: Int -> ResolveM Location
 allocateLocalSpace n = do
     oldCnt <- localOffset <$> get
     modify (\s -> s {localOffset = oldCnt + n})
-    return . Offset $ oldCnt
+    return . LocalOffset $ oldCnt
 
 resetLocalOffset :: ResolveM Int
 resetLocalOffset = localOffset <$> get <* modify (\s -> s {localOffset = 0})
@@ -125,9 +130,16 @@ resolveTopDecl :: TopDecl () () -> ResolveM (TopDecl R T)
 resolveTopDecl (FnDecl pos retType id_ params body ()) = do
     let paramTypes = map (\(Decl _ type_ _ ) -> type_) params
     addGlobalId pos (TFn paramTypes retType) id_
-    FnDecl pos retType id_ <$> mapM resolveDecl params <*> resolveBody body <*> resetLocalOffset
+    FnDecl pos retType id_ <$> resolveParams params <*> resolveBody body <*> resetLocalOffset
 resolveTopDecl (TupleDef pos id_ decls) = addTupleDecl pos id_ decls >> TupleDef pos id_ <$> mapM resolveDecl decls
 resolveTopDecl (Global decl) = addGlobalDecl decl >> Global <$> resolveDecl decl
+
+resolveParams :: [Decl ()] -> ResolveM [Decl T]
+resolveParams params = do
+    sizes <- mapM (calcVTypeSize . \(Decl _ vType _) -> vType) params
+    let offsets = init . scanl (+) 0 $ sizes
+    zipWithM_ addParamDecl params offsets
+    mapM resolveDecl params
 
 resolveDecl :: Decl () -> ResolveM (Decl T)
 resolveDecl (Decl pos vType _id) = Decl pos <$> sizeVType vType <*> return _id

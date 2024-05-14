@@ -11,13 +11,15 @@ data Decl t = Decl SourcePos (ValueType t) Id
     deriving (Show) -- TODO remove (all shows)
 
 data Location = Label String
-              | Offset Int
+              | LocalOffset Int
+              | ParamOffset Int
               | LabelPlusOffset String Int
     deriving (Show)
 
 addOffset :: Int -> Location -> Location
 addOffset o (Label s) = LabelPlusOffset s o
-addOffset o (Offset o') = Offset $ o + o'
+addOffset o (LocalOffset o') = LocalOffset $ o + o'
+addOffset o (ParamOffset o') = ParamOffset $ o + o'
 addOffset o (LabelPlusOffset s o') = LabelPlusOffset s $ o + o'
 
 -- i = id-associated data
