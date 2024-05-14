@@ -250,6 +250,35 @@ getLvalueLocation :: Lvalue R -> Location
 getLvalueLocation (Identifier _ _ (_, x)) = x
 getLvalueLocation (TupleAccess _ _ _ (_, x)) = x
 
+getLvalueType :: Lvalue R -> Type T
+getLvalueType (Identifier _ _ (x, _)) = x
+getLvalueType (TupleAccess _ _ _ (x, _)) = x
+
+getExprType :: Expr R -> Type T
+getExprType (LogicalLit _ _) = TValType VTLogical
+getExprType (IntLit _ _) = TValType VTInteger
+getExprType (StringLit _ _) = TValType VTString
+getExprType (Assignment _ _ rhs) = getExprType rhs
+getExprType (Ast.Call _ lval _) = case getLvalueType lval of
+    (TFn _ retType) -> retType
+getExprType (UnaryExpr _ op _) = case op of
+    Not -> TValType VTLogical
+    Ast.Negate -> TValType VTInteger
+getExprType (BinaryExpr _ op _ _) = case op of
+    Ast.Add -> TValType VTInteger
+    Ast.Sub -> TValType VTInteger
+    Ast.Mul -> TValType VTInteger
+    Ast.Div -> TValType VTInteger
+    Eq -> TValType VTLogical
+    Ne -> TValType VTLogical
+    Gt -> TValType VTLogical
+    Ge -> TValType VTLogical
+    Lt -> TValType VTLogical
+    Le -> TValType VTLogical
+    And -> TValType VTLogical
+    Or -> TValType VTLogical
+getExprType (Lvalue _ lval) = getLvalueType lval
+
 getLvalueNumWords :: Lvalue R -> Int
 getLvalueNumWords (Identifier _ _ ((TValType vType), _)) = vTypeSizeInBytes vType `div` 4
 getLvalueNumWords (TupleAccess _ _ _ ((TValType vType), _)) = vTypeSizeInBytes vType `div` 4
@@ -276,9 +305,11 @@ genExpr (Assignment _pos lval expr) = genExpr expr +&+ [PopN lvalLoc lvalSz, Pus
           lvalSz = getLvalueNumWords lval
 genExpr (Ast.Call _pos lval args) = (concat <$> mapM genExpr args) +&+ genAddr lval ++
                                     [Pop T0, Generate.Call T0,
-                                     RotateStack retSize (argsSize + retSize), PopN_ (argsSize `div` 4)]
-    where argsSize = undefined -- TODO
-          retSize = undefined -- TODO
+                                     RotateStack retWords (argsWords + retWords), PopN_ argsWords]
+    where argsWords = (`div`4) . sum . map vTypeSizeInBytes $ paramTypes
+          retWords = typeSizeInBytes retType `div` 4
+          (paramTypes, retType) = case getLvalueType lval of
+              TFn params ret -> (params, ret)
 genExpr (UnaryExpr _pos op expr) = genUnaryOp op expr
 genExpr (BinaryExpr _pos op left right) = genBinaryOp op left right
 genExpr (Lvalue _pos lval) = return [PopN (getLvalueLocation lval) (getLvalueNumWords lval)]
