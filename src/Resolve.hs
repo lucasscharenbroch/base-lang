@@ -59,6 +59,11 @@ idLookup id_ = do
         [] -> Nothing
         x:_ -> Just x
 
+idLocalLookup :: Id -> ResolveM (Maybe R)
+idLocalLookup id_ = do
+    symTable <- symbolTable <$> get
+    return $ Map.lookup id_ (head symTable)
+
 idLookupOrErr :: SourcePos -> Id -> ResolveM R
 idLookupOrErr pos id_ = do
     maybeR <- idLookup id_
@@ -73,9 +78,16 @@ tupleLookupOrErr id_ = do
         Just decls -> return decls
         Nothing -> lift . Left $ "Undefined tuple type: `" ++ id_ ++ "`"
 
-assertUniqueId :: SourcePos -> Id -> ResolveM ()
-assertUniqueId pos id_ = do
+assertGloballyUniqueId :: SourcePos -> Id -> ResolveM ()
+assertGloballyUniqueId pos id_ = do
     maybeMatch <- idLookup id_
+    case maybeMatch of
+        Just _ -> lift . Left $ "Multiply declared identifier: `" ++ id_ ++ "` @ " ++ show pos
+        Nothing -> return ()
+
+assertLocallyUniqueId :: SourcePos -> Id -> ResolveM ()
+assertLocallyUniqueId pos id_ = do
+    maybeMatch <- idLocalLookup id_
     case maybeMatch of
         Just _ -> lift . Left $ "Multiply declared identifier: `" ++ id_ ++ "` @ " ++ show pos
         Nothing -> return ()
@@ -85,19 +97,20 @@ addGlobalDecl (Decl pos type_ id_) = addGlobalId pos (TValType type_) id_
 
 addGlobalId :: SourcePos -> Type -> Id -> ResolveM ()
 addGlobalId pos type_ id_ = do
-    assertUniqueId pos id_
+    assertGloballyUniqueId pos id_
     let location = Label $ "_" ++ id_
     modifySymTable (\st -> insert id_ (type_, location) (head st) : tail st)
 
 addLocalDecl :: Decl () -> ResolveM ()
 addLocalDecl (Decl pos vType id_) = do
-    assertUniqueId pos id_
+    assertLocallyUniqueId pos id_
     typeSize <- calcVTypeSize vType
     location <- allocateLocalSpace typeSize
     modifySymTable (\st -> insert id_ (TValType vType, location) (head st) : tail st)
 
 addParamDecl :: Decl () -> Int -> ResolveM ()
-addParamDecl (Decl _pos vType id_) offset = do
+addParamDecl (Decl pos vType id_) offset = do
+    assertLocallyUniqueId pos id_
     let location = ParamOffset offset
     modifySymTable (\st -> insert id_ (TValType vType, location) (head st) : tail st)
 
@@ -130,7 +143,7 @@ resolveTopDecl :: TopDecl () () -> ResolveM (TopDecl R T)
 resolveTopDecl (FnDecl pos retType id_ params body ()) = do
     let paramTypes = map (\(Decl _ type_ _ ) -> type_) params
     addGlobalId pos (TFn paramTypes retType) id_
-    FnDecl pos retType id_ <$> resolveParams params <*> resolveBody body <*> resetLocalOffset
+    withNewScope $ FnDecl pos retType id_ <$> resolveParams params <*> resolveBody' body <*> resetLocalOffset
 resolveTopDecl (TupleDef pos id_ decls) = addTupleDecl pos id_ decls >> TupleDef pos id_ <$> mapM resolveDecl decls
 resolveTopDecl (Global decl) = addGlobalDecl decl >> Global <$> resolveDecl decl
 
@@ -145,7 +158,10 @@ resolveDecl :: Decl () -> ResolveM (Decl T)
 resolveDecl (Decl pos vType _id) = Decl pos <$> sizeVType vType <*> return _id
 
 resolveBody :: Body () () -> ResolveM (Body R T)
-resolveBody (decls, stmts) = withNewScope $ do
+resolveBody = withNewScope . resolveBody'
+
+resolveBody' :: Body () () -> ResolveM (Body R T)
+resolveBody' (decls, stmts) = do
     mapM_ addLocalDecl decls
     stmts' <- mapM resolveStmt stmts
     decls' <- mapM resolveDecl decls
