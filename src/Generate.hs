@@ -127,6 +127,12 @@ data DataDirective = Align Int
                    | Asciiz String
                    | Space Int
 
+instance Show DataDirective where
+    show (Align n) = ".align" ++ show n
+    show (DataLabel l) = l ++ ":"
+    show (Asciiz s) = ".asciiz " ++ show s
+    show (Space n) = ".space" ++ show n
+
 freshLabel :: GenM Label
 freshLabel = (head . labelStream <$> get) <* modify (\s -> s { labelStream = tail . labelStream $ s })
 
@@ -233,7 +239,10 @@ genAddr lval = case getLvalueLocation lval of
 genExpr :: Expr R -> GenM [Instruction]
 genExpr (LogicalLit _pos bool) = return [LoadImm T0 (fromEnum bool), Push T0]
 genExpr (IntLit _pos int) = return [LoadImm T0 int, Push T0]
-genExpr (StringLit _pos str) = undefined -- TODO need to add str to data
+genExpr (StringLit _pos str) = do
+    strLabel <- freshLabel
+    addData [DataLabel strLabel, Asciiz str]
+    return [LoadAddress T0 strLabel, Push T0]
 genExpr (Assignment _pos lval expr) = undefined
 genExpr (Call _pos lval args) = undefined
 genExpr (UnaryExpr _pos op expr) = genUnaryOp op expr
