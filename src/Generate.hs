@@ -80,6 +80,9 @@ data Instruction = TextLabel Label
                  | Push Register -- lw $r0 0($sp) \n subu $sp $sp 4
                  | Pop Register -- lw $r0 4($sp) \n addu $sp $sp 4
                  | Pop_ -- addu $sp $sp 4
+                 | PushN Location Int
+                 | PopN Location Int
+                 | PopN_ Int
                  | Syscall -- syscall
                  | MainReturn -- li $v0 10 \n syscall
 
@@ -119,6 +122,9 @@ instance Show Instruction where
     show (Push r) = show (Commented (LoadIdx r 0 SP) ("Push " ++ show r)) ++ "\n" ++ show (SubUnsigned  SP SP 4)
     show (Pop r) = show (Commented (LoadIdx r 4 SP) ("Pop " ++ show r)) ++ "\n" ++ show (AddUnsigned  SP SP 4)
     show Pop_ = show (Commented (AddUnsigned SP SP 4) "Pop _")
+    show (PushN location n) = intercalate "\n" [show $ genAddrFromLocation (addOffset i location) ++ [Pop T0, LoadIdx T0 0 T0, Push T0] | i <- [0..n-1]]
+    show (PopN location n) = intercalate "\n" [show $ genAddrFromLocation (addOffset i location) ++ [Pop T0, Pop T1, StoreIdx T1 0 T0] | i <- [0..n-1]]
+    show (PopN_ n) = show (Commented (AddUnsigned SP SP (4 * n)) "Pop ") ++ show n ++ " _"
     show Syscall = "syscall"
     show MainReturn = intercalate "\n" . map show $ [LoadImm V0 10, Syscall]
 
@@ -168,6 +174,7 @@ genTopDecl (FnDecl _pos _type id_ _paramDecls body numLocalBytes) = do
         ] ++ generatedBody ++ [
             Comment $ "End function body " ++ id_,
             -- Exit
+            -- TODO do stack gymnastics to move the return value (of arbitrary size) upward
             TextLabel exitLabel,
             LoadIdx RA 0 FP,
             Move T0 FP,
@@ -229,12 +236,18 @@ getLvalueLocation :: Lvalue R -> Location
 getLvalueLocation (Identifier _ _ (_, x)) = x
 getLvalueLocation (TupleAccess _ _ _ (_, x)) = x
 
+getLvalueSize :: Lvalue R -> Int
+getLvalueSize (Identifier _ _ ((TValType vType), _)) = vTypeSizeInBytes vType
+getLvalueSize (TupleAccess _ _ _ ((TValType vType), _)) = vTypeSizeInBytes vType
+
 genAddr :: Lvalue R -> [Instruction]
-genAddr lval = case getLvalueLocation lval of
-    Label label -> [LoadAddress T0 label, Push T0]
-    LabelPlusOffset label offset -> [LoadAddressPlusOffset T0 label offset, Push T0]
-    LocalOffset nWords -> [LoadAddressIdx T0 (-8 + nWords * (-4)) FP]
-    ParamOffset nWords -> [LoadAddressIdx T0 (4 + nWords * 4) FP]
+genAddr lval = genAddrFromLocation $ getLvalueLocation lval
+
+genAddrFromLocation :: Location -> [Instruction]
+genAddrFromLocation (Label label) = [LoadAddress T0 label, Push T0]
+genAddrFromLocation (LabelPlusOffset label offset) = [LoadAddressPlusOffset T0 label offset, Push T0]
+genAddrFromLocation (LocalOffset nWords) = [LoadAddressIdx T0 (-8 + nWords * (-4)) FP]
+genAddrFromLocation (ParamOffset nWords) = [LoadAddressIdx T0 (4 + nWords * 4) FP]
 
 genExpr :: Expr R -> GenM [Instruction]
 genExpr (LogicalLit _pos bool) = return [LoadImm T0 (fromEnum bool), Push T0]
@@ -247,7 +260,7 @@ genExpr (Assignment _pos lval expr) = undefined
 genExpr (Call _pos lval args) = undefined
 genExpr (UnaryExpr _pos op expr) = genUnaryOp op expr
 genExpr (BinaryExpr _pos op left right) = genBinaryOp op left right
-genExpr (Lvalue _pos lval) = undefined
+genExpr (Lvalue _pos lval) = return [PopN (getLvalueLocation lval) (getLvalueSize lval)]
 
 genUnaryOp :: UnaryOp -> Expr R -> GenM [Instruction]
 genUnaryOp Ast.Negate expr = genUnaryOp' expr [Generate.Negate T0 T0]

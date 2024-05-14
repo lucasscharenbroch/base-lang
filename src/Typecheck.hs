@@ -10,15 +10,15 @@ import Control.Monad (join)
 
 type CheckM = Either Error
 
-expectType_ :: SourcePos -> Type -> Type -> CheckM ()
+expectType_ :: SourcePos -> Type T -> Type T -> CheckM ()
 expectType_ = ((.) . (.) . (.)) void expectType
 
-expectType :: SourcePos -> Type -> Type -> CheckM Type
+expectType :: SourcePos -> Type T -> Type T -> CheckM (Type T)
 expectType pos t t'
     | t == t' = return t
     | otherwise = Left $ "Type error: expected `" ++ show t ++ "`, got `" ++ show t' ++ "` @ " ++ show pos
 
-expectOneOf :: SourcePos -> [Type] -> Type -> CheckM ()
+expectOneOf :: SourcePos -> [Type T] -> Type T -> CheckM ()
 expectOneOf pos ts t'
     | t' `elem` ts = return ()
     | otherwise = Left $ "Type error: expected one of " ++ tlist ++ ", got `" ++ show t' ++ "` @ " ++ show pos
@@ -32,14 +32,14 @@ checkTopDecl (FnDecl _pos retType _id _params body _numLocals) = checkBody retTy
 checkTopDecl (TupleDef _ _ _) = return ()
 checkTopDecl (Global _) = return ()
 
-checkBody :: Type -> Body R T -> CheckM ()
+checkBody :: Type T -> Body R T -> CheckM ()
 checkBody retType (_decls, stmts) = mapM_ (checkStmt retType) stmts
 
-checkLvalue :: Lvalue R -> CheckM Type
+checkLvalue :: Lvalue R -> CheckM (Type T)
 checkLvalue (Identifier _pos _id (t, _loc)) = return t
 checkLvalue (TupleAccess _pos _lval _id (t, _loc)) = return t
 
-checkStmt :: Type -> Stmt R T -> CheckM ()
+checkStmt :: Type T -> Stmt R T -> CheckM ()
 checkStmt _ (Inc pos lval) = checkLvalue lval >>= expectType_ pos (TValType VTInteger)
 checkStmt _ (Dec pos lval) = checkLvalue lval >>= expectType_ pos (TValType VTInteger)
 checkStmt _ (Read pos lval) = checkLvalue lval >>= expectType_ pos (TValType VTInteger)
@@ -59,7 +59,7 @@ checkStmt retType (Return pos Nothing)
     | retType == TVoid = return ()
     | otherwise = Left $ "Expected return value of type `" ++ show retType ++ "` (got nothing) @ " ++ show pos
 
-checkExpr :: Expr R -> CheckM Type
+checkExpr :: Expr R -> CheckM (Type T)
 checkExpr (LogicalLit _ _) = return $ TValType VTLogical
 checkExpr (IntLit _ _) = return $ TValType VTInteger
 checkExpr (StringLit _ _) = return $ TValType VTString
@@ -87,7 +87,7 @@ checkExpr (BinaryExpr pos op left right) = do
     checkBinaryOp pos op left' right'
 checkExpr (Lvalue _pos lval) = checkLvalue lval
 
-checkBinaryOp :: SourcePos -> BinaryOp -> Type -> Type -> CheckM Type
+checkBinaryOp :: SourcePos -> BinaryOp -> Type T -> Type T -> CheckM (Type T)
 checkBinaryOp pos op left right = case op of
     Add -> checkArith
     Sub -> checkArith
@@ -109,7 +109,7 @@ checkBinaryOp pos op left right = case op of
           checkCmp = expectOneOf pos comparable left >> expectType pos left right >> return bool
           checkLogical = mapM_ (expectType pos bool) [left, right] >> return bool
 
-checkUnaryOp :: SourcePos -> UnaryOp -> Type -> CheckM Type
+checkUnaryOp :: SourcePos -> UnaryOp -> Type T -> CheckM (Type T)
 checkUnaryOp pos op arg = case op of
     Negate -> expectType pos (TValType VTInteger) arg >> return arg
     Not -> expectType pos (TValType VTLogical) arg >> return arg

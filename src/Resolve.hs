@@ -21,8 +21,8 @@ initialResolutionState = ResolutionState
     , localOffset = 0
     }
 
-type R = (Type, Location) -- id-associated-data in resolved ast
-type T = Int -- tuple-associated-data in resolved ast
+type R = (Type T, Location) -- id-associated-data in resolved ast
+type T = Int -- type-associated-data in resolved ast (size)
 type SymbolTable = [Map String R]
 type TupleTable = Map String [Decl ()]
 type LocalOffset = Int -- number of words, starting at 0
@@ -95,24 +95,27 @@ assertLocallyUniqueId pos id_ = do
 addGlobalDecl :: Decl () -> ResolveM ()
 addGlobalDecl (Decl pos type_ id_) = addGlobalId pos (TValType type_) id_
 
-addGlobalId :: SourcePos -> Type -> Id -> ResolveM ()
+addGlobalId :: SourcePos -> Type () -> Id -> ResolveM ()
 addGlobalId pos type_ id_ = do
     assertGloballyUniqueId pos id_
     let location = Label $ "_" ++ id_
-    modifySymTable (\st -> insert id_ (type_, location) (head st) : tail st)
+    type' <- sizeType type_
+    modifySymTable (\st -> insert id_ (type', location) (head st) : tail st)
 
 addLocalDecl :: Decl () -> ResolveM ()
 addLocalDecl (Decl pos vType id_) = do
     assertLocallyUniqueId pos id_
     typeSize <- calcVTypeSize vType
     location <- allocateLocalSpace typeSize
-    modifySymTable (\st -> insert id_ (TValType vType, location) (head st) : tail st)
+    vType' <- sizeVType vType
+    modifySymTable (\st -> insert id_ (TValType vType', location) (head st) : tail st)
 
 addParamDecl :: Decl () -> Int -> ResolveM ()
 addParamDecl (Decl pos vType id_) offset = do
     assertLocallyUniqueId pos id_
     let location = ParamOffset offset
-    modifySymTable (\st -> insert id_ (TValType vType, location) (head st) : tail st)
+    vType' <- sizeVType vType
+    modifySymTable (\st -> insert id_ (TValType vType', location) (head st) : tail st)
 
 calcVTypeSize :: ValueType () -> ResolveM Int
 calcVTypeSize VTInteger = return 1
@@ -121,6 +124,11 @@ calcVTypeSize VTString = return 1 -- pointer
 calcVTypeSize (VTTuple id_ ()) = do
     decls <- tupleLookupOrErr id_
     sum <$> mapM (\(Decl _pos vType _id) -> calcVTypeSize vType) decls
+
+sizeType :: Type () -> ResolveM (Type Int)
+sizeType (TValType vt) = TValType <$> sizeVType vt
+sizeType TVoid = return TVoid
+sizeType (TFn params ret) = TFn <$> mapM sizeVType params <*> sizeType ret
 
 sizeVType :: ValueType () -> ResolveM (ValueType Int)
 sizeVType t = do
@@ -143,7 +151,7 @@ resolveTopDecl :: TopDecl () () -> ResolveM (TopDecl R T)
 resolveTopDecl (FnDecl pos retType id_ params body ()) = do
     let paramTypes = map (\(Decl _ type_ _ ) -> type_) params
     addGlobalId pos (TFn paramTypes retType) id_
-    withNewScope $ FnDecl pos retType id_ <$> resolveParams params <*> resolveBody' body <*> resetLocalOffset
+    withNewScope $ FnDecl pos <$> sizeType retType <*> return id_ <*> resolveParams params <*> resolveBody' body <*> resetLocalOffset
 resolveTopDecl (TupleDef pos id_ decls) = addTupleDecl pos id_ decls >> TupleDef pos id_ <$> mapM resolveDecl decls
 resolveTopDecl (Global decl) = addGlobalDecl decl >> Global <$> resolveDecl decl
 
@@ -183,7 +191,9 @@ resolveLvalue (TupleAccess pos lval id_ ()) = do
     sizePrefixSum <- init . scanl (+) 0 <$> mapM (\(Decl _pos vType _id) -> calcVTypeSize vType) decls
     case filter ((\(Decl _pos _type declId) -> id_ == declId) . snd) $ zip sizePrefixSum decls of
         [] -> lift . Left $ "No such field `" ++ id_ ++ "` on tuple-type `" ++ tupleTypeId ++ "`"
-        (inTupleOffset, Decl _pos declType _id):_ -> return . TupleAccess pos rLval id_ $ (TValType declType, addOffset inTupleOffset tLocation)
+        (inTupleOffset, Decl _pos declType _id):_ -> do
+            declType' <- sizeVType declType
+            return . TupleAccess pos rLval id_ $ (TValType declType', addOffset inTupleOffset tLocation)
 
 resolveStmt :: Stmt () () -> ResolveM (Stmt R T)
 resolveStmt (Inc pos lval) = Inc pos <$> resolveLvalue lval

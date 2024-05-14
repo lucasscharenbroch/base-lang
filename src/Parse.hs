@@ -26,7 +26,7 @@ fn = try (FnDecl <$> getPosition <*> returnType <*> identifier <* symbol "{")
  <*> brackets body
  <*> return ()
 
-returnType :: Parser Type
+returnType :: Parser (Type ())
 returnType = TVoid <$ reserved "void"
          <|> TValType <$> valueType
 
