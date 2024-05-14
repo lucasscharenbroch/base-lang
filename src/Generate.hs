@@ -236,9 +236,9 @@ getLvalueLocation :: Lvalue R -> Location
 getLvalueLocation (Identifier _ _ (_, x)) = x
 getLvalueLocation (TupleAccess _ _ _ (_, x)) = x
 
-getLvalueSize :: Lvalue R -> Int
-getLvalueSize (Identifier _ _ ((TValType vType), _)) = vTypeSizeInBytes vType
-getLvalueSize (TupleAccess _ _ _ ((TValType vType), _)) = vTypeSizeInBytes vType
+getLvalueNumWords :: Lvalue R -> Int
+getLvalueNumWords (Identifier _ _ ((TValType vType), _)) = vTypeSizeInBytes vType `div` 4
+getLvalueNumWords (TupleAccess _ _ _ ((TValType vType), _)) = vTypeSizeInBytes vType `div` 4
 
 genAddr :: Lvalue R -> [Instruction]
 genAddr lval = genAddrFromLocation $ getLvalueLocation lval
@@ -256,11 +256,13 @@ genExpr (StringLit _pos str) = do
     strLabel <- freshLabel
     addData [DataLabel strLabel, Asciiz str]
     return [LoadAddress T0 strLabel, Push T0]
-genExpr (Assignment _pos lval expr) = undefined
+genExpr (Assignment _pos lval expr) = genExpr expr +&+ [PopN lvalLoc lvalSz, PushN lvalLoc lvalSz]
+    where lvalLoc = getLvalueLocation lval
+          lvalSz = getLvalueNumWords lval
 genExpr (Call _pos lval args) = undefined
 genExpr (UnaryExpr _pos op expr) = genUnaryOp op expr
 genExpr (BinaryExpr _pos op left right) = genBinaryOp op left right
-genExpr (Lvalue _pos lval) = return [PopN (getLvalueLocation lval) (getLvalueSize lval)]
+genExpr (Lvalue _pos lval) = return [PopN (getLvalueLocation lval) (getLvalueNumWords lval)]
 
 genUnaryOp :: UnaryOp -> Expr R -> GenM [Instruction]
 genUnaryOp Ast.Negate expr = genUnaryOp' expr [Generate.Negate T0 T0]
