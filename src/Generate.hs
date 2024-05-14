@@ -240,9 +240,12 @@ genStmt retLabel (While _pos cond body) = do
            [Commented (TextLabel doneLabel) "End while"]
 genStmt _ (Read _pos lval) = return $ [LoadImm V0 5, Syscall] ++ genAddr lval ++ [Pop T0, StoreIdx V0 0 T0]
 genStmt _ (Write _pos expr) = genExpr expr +&+ [Pop A0, LoadImm V0 printType, Syscall]
-    where printType = undefined -- TODO need type of expr, 1 for int, 4 for string
+    where printType = case getExprType expr of
+              TValType VTInteger -> 1
+              TValType VTString -> 4
+              _ -> error "Internal: bad type for write"
 genStmt _ (ExprStmt _pos expr) = genExpr expr +&+ [PopN_ numWords]
-    where numWords = undefined -- TODO get size (in words) of expr's type
+    where numWords = typeSizeInBytes (getExprType expr) `div` 4
 genStmt retLabel (Return _pos (Just expr)) = genExpr expr +&+ [JumpLabel retLabel]
 genStmt retLabel (Return _pos Nothing) = return [JumpLabel retLabel]
 
@@ -261,6 +264,7 @@ getExprType (StringLit _ _) = TValType VTString
 getExprType (Assignment _ _ rhs) = getExprType rhs
 getExprType (Ast.Call _ lval _) = case getLvalueType lval of
     (TFn _ retType) -> retType
+    _ -> error "Internal: non-function call"
 getExprType (UnaryExpr _ op _) = case op of
     Not -> TValType VTLogical
     Ast.Negate -> TValType VTInteger
@@ -310,6 +314,7 @@ genExpr (Ast.Call _pos lval args) = (concat <$> mapM genExpr args) +&+ genAddr l
           retWords = typeSizeInBytes retType `div` 4
           (paramTypes, retType) = case getLvalueType lval of
               TFn params ret -> (params, ret)
+              _ -> error "Internal: call on non-function lvalue"
 genExpr (UnaryExpr _pos op expr) = genUnaryOp op expr
 genExpr (BinaryExpr _pos op left right) = genBinaryOp op left right
 genExpr (Lvalue _pos lval) = return [PopN (getLvalueLocation lval) (getLvalueNumWords lval)]

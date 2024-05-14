@@ -99,3 +99,4 @@ lvalue :: Parser (Lvalue ())
 lvalue = intoLvalue . reverse <$> ((,) <$> getPosition <*> identifier) `sepBy1` colon
       where intoLvalue [(sp, i)] = Identifier sp i ()
             intoLvalue ((sp, i):rest) = TupleAccess sp (intoLvalue rest) i ()
+            intoLvalue _ = error "Internal: sepBy1 yeilds empty list"
