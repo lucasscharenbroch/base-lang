@@ -8,12 +8,20 @@ import Data.Maybe (fromMaybe)
 import Text.Parsec (SourcePos)
 import Control.Monad.State.Lazy
 
-type MipsProgram = [MipsSection]
-type GenM = State [Label]
-type Label = String
+data GenState = GenState
+    { labelStream :: [Label]
+    , dataDirectives :: [DataDirective]
+    }
 
-data MipsSection = Text [Instruction]
-                 | Data [DataDirective]
+initialGenState :: GenState
+initialGenState = GenState
+    { labelStream = map (("L"++) . show) [0..]
+    , dataDirectives = []
+    }
+
+type MipsProgram = ([Instruction], [DataDirective])
+type GenM = State GenState
+type Label = String
 
 data Register = T0 | T1 | V0 | RA | SP | FP | A0
 
@@ -120,25 +128,28 @@ data DataDirective = Align Int
                    | Space Int
 
 freshLabel :: GenM Label
-freshLabel = head <$> get <* modify tail
+freshLabel = (head . labelStream <$> get) <* modify (\s -> s { labelStream = tail . labelStream $ s })
+
+addData :: [DataDirective] -> GenM ()
+addData dds = modify (\s -> s { dataDirectives = dataDirectives s ++ dds })
 
 vTypeSizeInBytes :: ValueType T -> Int
 vTypeSizeInBytes (VTTuple _ sz) = sz * 4
 vTypeSizeInBytes _ = 4
 
 generate :: ResolvedAst -> MipsProgram
-generate = concat . flip evalState labels . mapM genTopDecl
-    where labels = map (("L"++) . show) [0..]
+generate ast = (concat instructionss, dataDirectives resState)
+    where (instructionss, resState) = runState (mapM genTopDecl ast) initialGenState
 
-genGlobal :: Decl T -> MipsSection
-genGlobal (Decl _pos valType id_) = Data [Align 2, DataLabel $ "_" ++ id_, Space $ vTypeSizeInBytes valType]
+genGlobal :: Decl T -> GenM ()
+genGlobal (Decl _pos valType id_) = addData [Align 2, DataLabel $ "_" ++ id_, Space $ vTypeSizeInBytes valType]
 
-genTopDecl :: TopDecl R T -> GenM MipsProgram
+genTopDecl :: TopDecl R T -> GenM [Instruction]
 genTopDecl (TupleDef _ _ _) = return []
-genTopDecl (Global decl) = return [genGlobal decl]
+genTopDecl (Global decl) = genGlobal decl >> return []
 genTopDecl (FnDecl _pos _type id_ _paramDecls body numLocalBytes) = do
     generatedBody <- genBody exitLabel body
-    return . singleton . Text $ [
+    return $ [
             -- "Preamble"
             fnLabel,
             -- "Prelude"
