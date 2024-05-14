@@ -57,12 +57,12 @@ data Instruction = TextLabel Label
                  | AddUnsigned Register Register Int -- addu $sp, $sp, 4
                  | Move Register Register -- move $t0, $t1
                  | Jump Register -- jr $ra
-                 | JumpLabel Label -- j _f
+                 | JumpLabel Label -- j _L0
+                 | Call Register -- jalr $t0
                  | LoadImm Register Int -- li $v0, 1
                  | AddImm Register Register Int -- addi $t0, $t0, 1
                  | BranchEqZ Register Label -- beqz $t0, _L14
                  | BranchNeZ Register Label -- bnez $t0, _L14
-                 | Branch Label -- b _L14
                  | LoadAddress Register Label -- la $t0, _g
                  | LoadAddressPlusOffset Register Label Int -- la $t0, (_g + 1)
                  | LoadAddressIdx Register Int Register -- la $t0, 0($t1)
@@ -85,6 +85,7 @@ data Instruction = TextLabel Label
                  | PopN_ Int
                  | Syscall -- syscall
                  | MainReturn -- li $v0 10 \n syscall
+                 | RotateStack Int Int
 
 instance Show Instruction where
     show (TextLabel l) = l ++ ":"
@@ -100,11 +101,11 @@ instance Show Instruction where
     show (Move r0 r1) = "move " ++ show r0 ++ ", " ++ show r1
     show (Jump r) = "jr " ++ show r
     show (JumpLabel l) = "j " ++ l
+    show (Generate.Call r) = "jalr " ++ show r
     show (LoadImm r i) = "li " ++ show r ++ ", " ++ show i
     show (AddImm r0 r1 i) = "addi " ++ show r0 ++ ", " ++ show r1 ++ ", " ++ show i
     show (BranchEqZ r l) = "beqz " ++ show r ++ ", " ++ l
     show (BranchNeZ r l) = "bnez " ++ show r ++ ", " ++ l
-    show (Branch l) = "b" ++ l
     show (LoadAddress r l) = "la " ++ show r ++ ", " ++ l
     show (LoadAddressPlusOffset r l o) = "la " ++ show r ++ ", (" ++ l ++ " + " ++ show o ++ ")"
     show (LoadAddressIdx r0 offset r1) = "la " ++ show r0 ++ ", " ++ show offset ++ "(" ++ show r1 ++ ")"
@@ -127,6 +128,13 @@ instance Show Instruction where
     show (PopN_ n) = show (Commented (AddUnsigned SP SP (4 * n)) "Pop ") ++ show n ++ " _"
     show Syscall = "syscall"
     show MainReturn = intercalate "\n" . map show $ [LoadImm V0 10, Syscall]
+    show (RotateStack n sz)
+        | sz == 0 || n `mod` sz == 0 = []
+        | otherwise = intercalate "\n" . map show $ instrs
+        where idxs = take sz [(n * i) `mod` sz | i <- [0..]]
+              offsets = [sz - (i * 4) | i <- idxs] -- from $sp
+              instrs = [LoadIdx T1 (last offsets) SP] ++
+                       concatMap (\o -> [LoadIdx T0 o SP, StoreIdx T1 o SP, Move T0 T1]) offsets
 
 data DataDirective = Align Int
                    | DataLabel Label
@@ -213,7 +221,7 @@ genStmt retLabel (IfElse _pos cond body maybeBody) = do
     genExpr cond +&+
         [Pop T0, BranchEqZ T0 elseLabel] ++
         thenBody ++
-        [Branch doneLabel, Commented (TextLabel doneLabel) "Else"] ++
+        [JumpLabel doneLabel, Commented (TextLabel doneLabel) "Else"] ++
         elseBody ++
         [Commented (TextLabel doneLabel) "Done"]
 genStmt retLabel (While _pos cond body) = do
@@ -228,7 +236,8 @@ genStmt retLabel (While _pos cond body) = do
 genStmt _ (Read _pos lval) = return $ [LoadImm V0 5, Syscall] ++ genAddr lval ++ [Pop T0, StoreIdx V0 0 T0]
 genStmt _ (Write _pos expr) = genExpr expr +&+ [Pop A0, LoadImm V0 printType, Syscall]
     where printType = undefined -- TODO need type of expr, 1 for int, 4 for string
-genStmt _ (ExprStmt _pos expr) = undefined -- TODO have to pop result of expression, need size of type of the expression to do that
+genStmt _ (ExprStmt _pos expr) = genExpr expr +&+ [PopN_ numWords]
+    where numWords = undefined -- TODO get size (in words) of expr's type
 genStmt retLabel (Return _pos (Just expr)) = genExpr expr +&+ [JumpLabel retLabel]
 genStmt retLabel (Return _pos Nothing) = return [JumpLabel retLabel]
 
@@ -259,7 +268,11 @@ genExpr (StringLit _pos str) = do
 genExpr (Assignment _pos lval expr) = genExpr expr +&+ [PopN lvalLoc lvalSz, PushN lvalLoc lvalSz]
     where lvalLoc = getLvalueLocation lval
           lvalSz = getLvalueNumWords lval
-genExpr (Call _pos lval args) = undefined
+genExpr (Ast.Call _pos lval args) = (concat <$> mapM genExpr args) +&+ genAddr lval ++
+                                    [Pop T0, Generate.Call T0,
+                                     RotateStack retSize (argsSize + retSize), PopN_ (argsSize `div` 4)]
+    where argsSize = undefined -- TODO
+          retSize = undefined -- TODO
 genExpr (UnaryExpr _pos op expr) = genUnaryOp op expr
 genExpr (BinaryExpr _pos op left right) = genBinaryOp op left right
 genExpr (Lvalue _pos lval) = return [PopN (getLvalueLocation lval) (getLvalueNumWords lval)]
