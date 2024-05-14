@@ -24,6 +24,18 @@ instance Show Register where
     show RA = "$ra"
     show SP = "$sp"
     show FP = "$fp"
+    show A0 = "$a0"
+
+infixr 5 +>+, +&+, +$+
+
+(+>+) :: Monad m => m [a] -> m [a] -> m [a]
+xs +>+ ys = (++) <$> xs <*> ys
+
+(+&+) :: Monad m => m [a] -> [a] -> m [a]
+xs +&+ ys = (++) <$> xs <*> return ys
+
+(+$+) :: Monad m => [a] -> m [a] -> m [a]
+xs +$+ ys = (++xs) <$> ys
 
 data Instruction = TextLabel Label
                  | MainFnLabel
@@ -155,8 +167,8 @@ genTopDecl (FnDecl _pos _type id_ _paramDecls body numLocalBytes) = do
               | id_ == "main" = MainReturn
               | otherwise = Jump RA
 
-genMutImmAdd :: SourcePos -> Int -> Lvalue R -> [Instruction]
-genMutImmAdd pos n lval = genExpr (Lvalue pos lval) ++ genAddr lval ++ [
+genMutImmAdd :: SourcePos -> Int -> Lvalue R -> GenM [Instruction]
+genMutImmAdd pos n lval = genExpr (Lvalue pos lval) +&+ genAddr lval ++ [
         Pop T0,
         Pop T1,
         AddImm T1 T1 n,
@@ -167,33 +179,33 @@ genBody :: Label -> Body R T -> GenM [Instruction]
 genBody retLabel = pure . concat <=< mapM (genStmt retLabel) . snd
 
 genStmt :: Label -> Stmt R T -> GenM [Instruction]
-genStmt _ (Inc pos lval) = return $ genMutImmAdd pos 1 lval
-genStmt _ (Dec pos lval) = return $ genMutImmAdd pos (-1) lval
+genStmt _ (Inc pos lval) = genMutImmAdd pos 1 lval
+genStmt _ (Dec pos lval) = genMutImmAdd pos (-1) lval
 genStmt retLabel (IfElse _pos cond body maybeBody) = do
     elseLabel <- freshLabel
     doneLabel <- freshLabel
     thenBody <- genBody retLabel body
     elseBody <- fromMaybe [] <$> mapM (genBody retLabel) maybeBody
-    return $ genExpr cond ++
-             [Pop T0, BranchEqZ T0 elseLabel] ++
-             thenBody ++
-             [Branch doneLabel, Commented (TextLabel doneLabel) "Else"] ++
-             elseBody ++
-             [Commented (TextLabel doneLabel) "Done"]
+    genExpr cond +&+
+        [Pop T0, BranchEqZ T0 elseLabel] ++
+        thenBody ++
+        [Branch doneLabel, Commented (TextLabel doneLabel) "Else"] ++
+        elseBody ++
+        [Commented (TextLabel doneLabel) "Done"]
 genStmt retLabel (While _pos cond body) = do
     beginLabel <- freshLabel
     doneLabel <- freshLabel
     generatedBody <- genBody retLabel body
-    return $ [Commented (TextLabel beginLabel) "Begin while"] ++
-             genExpr cond ++
-             [Pop T0, BranchEqZ T0 doneLabel] ++
-             generatedBody ++
-             [Commented (TextLabel doneLabel) "End while"]
+    return [Commented (TextLabel beginLabel) "Begin while"] +>+
+           genExpr cond +&+
+           [Pop T0, BranchEqZ T0 doneLabel] ++
+           generatedBody ++
+           [Commented (TextLabel doneLabel) "End while"]
 genStmt _ (Read _pos lval) = return $ [LoadImm V0 5, Syscall] ++ genAddr lval ++ [Pop T0, StoreIdx V0 0 T0]
-genStmt _ (Write _pos expr) = return $ genExpr expr ++ [Pop A0, LoadImm V0 printType, Syscall]
+genStmt _ (Write _pos expr) = genExpr expr +&+ [Pop A0, LoadImm V0 printType, Syscall]
     where printType = undefined -- TODO need type of expr, 1 for int, 4 for string
 genStmt _ (ExprStmt _pos expr) = undefined -- TODO have to pop result of expression, need size of type of the expression to do that
-genStmt retLabel (Return _pos (Just expr)) = return $ genExpr expr ++ [JumpLabel retLabel]
+genStmt retLabel (Return _pos (Just expr)) = genExpr expr +&+ [JumpLabel retLabel]
 genStmt retLabel (Return _pos Nothing) = return [JumpLabel retLabel]
 
 getLvalueLocation :: Lvalue R -> Location
@@ -207,17 +219,25 @@ genAddr lval = case getLvalueLocation lval of
     LocalOffset nWords -> [LoadAddressIdx T0 (-8 + nWords * (-4)) FP]
     ParamOffset nWords -> [LoadAddressIdx T0 (4 + nWords * 4) FP]
 
-genExpr :: Expr R -> [Instruction]
-genExpr (LogicalLit _pos bool) = [LoadImm T0 (fromEnum bool), Push T0]
-genExpr (IntLit _pos int) = [LoadImm T0 int, Push T0]
+genExpr :: Expr R -> GenM [Instruction]
+genExpr (LogicalLit _pos bool) = return [LoadImm T0 (fromEnum bool), Push T0]
+genExpr (IntLit _pos int) = return [LoadImm T0 int, Push T0]
 genExpr (StringLit _pos str) = undefined -- TODO need to add str to data
 genExpr (Assignment _pos lval expr) = undefined
 genExpr (Call _pos lval args) = undefined
-genExpr (UnaryExpr _pos op expr) = genExpr expr ++ [Pop T0] ++ genUnaryOp op ++ [Push T0]
-genExpr (BinaryExpr _pos And left right) = undefined
-genExpr (BinaryExpr _pos Or left right) = undefined
-genExpr (BinaryExpr _pos op left right) = genExpr left ++ genExpr right ++ [Pop T1, Pop T0] ++ genBinaryOp op ++ [Push T0]
+genExpr (UnaryExpr _pos op expr) = genExpr expr +&+ [Pop T0] ++ genUnaryOp op ++ [Push T0]
+genExpr (BinaryExpr _pos And left right) = genShortCircuited BranchEqZ left right
+genExpr (BinaryExpr _pos Or left right) = genShortCircuited BranchNeZ left right
+genExpr (BinaryExpr _pos op left right) = genExpr left +>+ genExpr right +&+ [Pop T1, Pop T0] ++ genBinaryOp op ++ [Push T0]
 genExpr (Lvalue _pos lval) = undefined
+
+genShortCircuited :: (Register -> Label -> Instruction) -> Expr R -> Expr R -> GenM [Instruction]
+genShortCircuited condition left right = do
+    doneLabel <- freshLabel
+    genExpr left +>+
+        [Pop T0, condition T0 doneLabel] +$+
+        genExpr right +&+ [Pop T0] ++
+        [TextLabel doneLabel, Push T0]
 
 -- argument in T0, return in T0
 genUnaryOp :: UnaryOp -> [Instruction]
