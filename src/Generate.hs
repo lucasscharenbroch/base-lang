@@ -15,7 +15,7 @@ type Label = String
 data MipsSection = Text [Instruction]
                  | Data [DataDirective]
 
-data Register = T0 | T1 | V0 | RA | SP | FP
+data Register = T0 | T1 | V0 | RA | SP | FP | A0
 
 instance Show Register where
     show T0 = "$t0"
@@ -190,7 +190,8 @@ genStmt retLabel (While _pos cond body) = do
              generatedBody ++
              [Commented (TextLabel doneLabel) "End while"]
 genStmt _ (Read _pos lval) = return $ [LoadImm V0 5, Syscall] ++ genAddr lval ++ [Pop T0, StoreIdx V0 0 T0]
-genStmt _ (Write _pos expr) = undefined
+genStmt _ (Write _pos expr) = return $ genExpr expr ++ [Pop A0, LoadImm V0 printType, Syscall]
+    where printType = undefined -- TODO need type of expr, 1 for int, 4 for string
 genStmt _ (ExprStmt _pos expr) = undefined -- TODO have to pop result of expression, need size of type of the expression to do that
 genStmt retLabel (Return _pos (Just expr)) = return $ genExpr expr ++ [JumpLabel retLabel]
 genStmt retLabel (Return _pos Nothing) = return [JumpLabel retLabel]
@@ -209,9 +210,30 @@ genAddr lval = case getLvalueLocation lval of
 genExpr :: Expr R -> [Instruction]
 genExpr (LogicalLit _pos bool) = [LoadImm T0 (fromEnum bool), Push T0]
 genExpr (IntLit _pos int) = [LoadImm T0 int, Push T0]
-genExpr (StringLit _pos str) = undefined
+genExpr (StringLit _pos str) = undefined -- TODO need to add str to data
 genExpr (Assignment _pos lval expr) = undefined
 genExpr (Call _pos lval args) = undefined
-genExpr (UnaryExpr _pos op expr) = undefined
-genExpr (BinaryExpr _pos op left right) = undefined
+genExpr (UnaryExpr _pos op expr) = genExpr expr ++ [Pop T0] ++ genUnaryOp op ++ [Push T0]
+genExpr (BinaryExpr _pos And left right) = undefined
+genExpr (BinaryExpr _pos Or left right) = undefined
+genExpr (BinaryExpr _pos op left right) = genExpr left ++ genExpr right ++ [Pop T1, Pop T0] ++ genBinaryOp op ++ [Push T0]
 genExpr (Lvalue _pos lval) = undefined
+
+-- argument in T0, return in T0
+genUnaryOp :: UnaryOp -> [Instruction]
+genUnaryOp Ast.Negate = [Generate.Negate T0 T0]
+genUnaryOp Not = [LoadImm T1 0, SetEq T0 T0 T1]
+
+genBinaryOp :: BinaryOp -> [Instruction]
+genBinaryOp Ast.Add = [Generate.Add T0 T0 T1]
+genBinaryOp Ast.Sub = [Generate.Sub T0 T0 T1]
+genBinaryOp Ast.Mul = [Generate.Mul T0 T0 T1]
+genBinaryOp Ast.Div = [Generate.Div T0 T0 T1]
+genBinaryOp Eq = [Generate.SetEq T0 T0 T1]
+genBinaryOp Ne = [Generate.SetNe T0 T0 T1]
+genBinaryOp Gt = [Generate.SetGt T0 T0 T1]
+genBinaryOp Ge = [Generate.SetGe T0 T0 T1]
+genBinaryOp Lt = [Generate.SetLt T0 T0 T1]
+genBinaryOp Le = [Generate.SetLe T0 T0 T1]
+genBinaryOp And = undefined -- (defined above)
+genBinaryOp Or = undefined -- (defined above)
