@@ -13,9 +13,9 @@ import Control.Monad
 main :: IO ()
 main = do
     input <- getContents
-    case parse input >>= resolve >>= \ast -> typeCheck ast >> return ast of
+    case compile input of
         Left err -> hPutStrLn stderr err
-        Right ast -> print ast
+        Right mipsProgram -> print mipsProgram
 
 compile :: String -> Either Error MipsProgram
 compile = parse >=>

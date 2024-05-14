@@ -3,7 +3,7 @@ module Generate where
 import Ast
 import Resolve (R, T)
 
-import Data.List (intercalate, singleton)
+import Data.List (intercalate)
 import Data.Maybe (fromMaybe)
 import Text.Parsec (SourcePos)
 import Control.Monad.State.Lazy
@@ -19,9 +19,13 @@ initialGenState = GenState
     , dataDirectives = []
     }
 
-type MipsProgram = ([Instruction], [DataDirective])
 type GenM = State GenState
 type Label = String
+
+data MipsProgram = MipsProgram [Instruction] [DataDirective]
+
+instance Show MipsProgram where
+    show (MipsProgram codes datas) = intercalate "\n" $ map show datas ++ map show codes
 
 data Register = T0 | T1 | V0 | RA | SP | FP | A0
 
@@ -162,7 +166,7 @@ typeSizeInBytes (TValType vt) = vTypeSizeInBytes vt
 typeSizeInBytes _ = 0
 
 generate :: ResolvedAst -> MipsProgram
-generate ast = (concat instructionss, dataDirectives resState)
+generate ast = MipsProgram (concat instructionss) (dataDirectives resState)
     where (instructionss, resState) = runState (mapM genTopDecl ast) initialGenState
 
 genGlobal :: Decl T -> GenM ()
