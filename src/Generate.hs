@@ -10,6 +10,7 @@ import Control.Monad.State.Lazy
 
 type MipsProgram = [MipsSection]
 type GenM = State [Label]
+type Label = String
 
 data MipsSection = Text [Instruction]
                  | Data [DataDirective]
@@ -23,8 +24,6 @@ instance Show Register where
     show RA = "$ra"
     show SP = "$sp"
     show FP = "$fp"
-
-type Label = String
 
 data Instruction = TextLabel Label
                  | MainFnLabel
@@ -190,9 +189,9 @@ genStmt retLabel (While _pos cond body) = do
              [Pop T0, BranchEqZ T0 doneLabel] ++
              generatedBody ++
              [Commented (TextLabel doneLabel) "End while"]
-genStmt _ (Read _pos lval) = undefined
+genStmt _ (Read _pos lval) = return $ [LoadImm V0 5, Syscall] ++ genAddr lval ++ [Pop T0, StoreIdx V0 0 T0]
 genStmt _ (Write _pos expr) = undefined
-genStmt _ (ExprStmt _pos expr) = undefined
+genStmt _ (ExprStmt _pos expr) = undefined -- TODO have to pop result of expression, need size of type of the expression to do that
 genStmt retLabel (Return _pos (Just expr)) = return $ genExpr expr ++ [JumpLabel retLabel]
 genStmt retLabel (Return _pos Nothing) = return [JumpLabel retLabel]
 
@@ -208,4 +207,11 @@ genAddr lval = case getLvalueLocation lval of
     ParamOffset nWords -> [LoadAddressIdx T0 (4 + nWords * 4) FP]
 
 genExpr :: Expr R -> [Instruction]
-genExpr = undefined
+genExpr (LogicalLit _pos bool) = [LoadImm T0 (fromEnum bool), Push T0]
+genExpr (IntLit _pos int) = [LoadImm T0 int, Push T0]
+genExpr (StringLit _pos str) = undefined
+genExpr (Assignment _pos lval expr) = undefined
+genExpr (Call _pos lval args) = undefined
+genExpr (UnaryExpr _pos op expr) = undefined
+genExpr (BinaryExpr _pos op left right) = undefined
+genExpr (Lvalue _pos lval) = undefined
