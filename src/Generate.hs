@@ -236,11 +236,35 @@ genExpr (IntLit _pos int) = return [LoadImm T0 int, Push T0]
 genExpr (StringLit _pos str) = undefined -- TODO need to add str to data
 genExpr (Assignment _pos lval expr) = undefined
 genExpr (Call _pos lval args) = undefined
-genExpr (UnaryExpr _pos op expr) = genExpr expr +&+ [Pop T0] ++ genUnaryOp op ++ [Push T0]
-genExpr (BinaryExpr _pos And left right) = genShortCircuited BranchEqZ left right
-genExpr (BinaryExpr _pos Or left right) = genShortCircuited BranchNeZ left right
-genExpr (BinaryExpr _pos op left right) = genExpr left +>+ genExpr right +&+ [Pop T1, Pop T0] ++ genBinaryOp op ++ [Push T0]
+genExpr (UnaryExpr _pos op expr) = genUnaryOp op expr
+genExpr (BinaryExpr _pos op left right) = genBinaryOp op left right
 genExpr (Lvalue _pos lval) = undefined
+
+genUnaryOp :: UnaryOp -> Expr R -> GenM [Instruction]
+genUnaryOp Ast.Negate expr = genUnaryOp' expr [Generate.Negate T0 T0]
+genUnaryOp Not expr = genUnaryOp' expr [LoadImm T1 0, SetEq T0 T0 T1]
+
+-- argument in T0, return in T0
+genUnaryOp' :: Expr R -> [Instruction] -> GenM [Instruction]
+genUnaryOp' expr body = genExpr expr +&+ [Pop T0] ++ body ++ [Push T0]
+
+genBinaryOp :: BinaryOp -> Expr R -> Expr R -> GenM [Instruction]
+genBinaryOp Ast.Add left right = genBinaryOp' left right [Generate.Add T0 T0 T1]
+genBinaryOp Ast.Sub left right = genBinaryOp' left right [Generate.Sub T0 T0 T1]
+genBinaryOp Ast.Mul left right = genBinaryOp' left right [Generate.Mul T0 T0 T1]
+genBinaryOp Ast.Div left right = genBinaryOp' left right [Generate.Div T0 T0 T1]
+genBinaryOp Eq left right = genBinaryOp' left right [Generate.SetEq T0 T0 T1]
+genBinaryOp Ne left right = genBinaryOp' left right [Generate.SetNe T0 T0 T1]
+genBinaryOp Gt left right = genBinaryOp' left right [Generate.SetGt T0 T0 T1]
+genBinaryOp Ge left right = genBinaryOp' left right [Generate.SetGe T0 T0 T1]
+genBinaryOp Lt left right = genBinaryOp' left right [Generate.SetLt T0 T0 T1]
+genBinaryOp Le left right = genBinaryOp' left right [Generate.SetLe T0 T0 T1]
+genBinaryOp And left right = genShortCircuited BranchEqZ left right
+genBinaryOp Or left right = genShortCircuited BranchNeZ left right
+
+-- arguments in T0 and T1, return in T0
+genBinaryOp' :: Expr R -> Expr R -> [Instruction] -> GenM [Instruction]
+genBinaryOp' left right body = genExpr left +>+ genExpr right +&+ [Pop T1, Pop T0] ++ body ++ [Push T0]
 
 genShortCircuited :: (Register -> Label -> Instruction) -> Expr R -> Expr R -> GenM [Instruction]
 genShortCircuited condition left right = do
@@ -249,22 +273,3 @@ genShortCircuited condition left right = do
         [Pop T0, condition T0 doneLabel] +$+
         genExpr right +&+ [Pop T0] ++
         [TextLabel doneLabel, Push T0]
-
--- argument in T0, return in T0
-genUnaryOp :: UnaryOp -> [Instruction]
-genUnaryOp Ast.Negate = [Generate.Negate T0 T0]
-genUnaryOp Not = [LoadImm T1 0, SetEq T0 T0 T1]
-
-genBinaryOp :: BinaryOp -> [Instruction]
-genBinaryOp Ast.Add = [Generate.Add T0 T0 T1]
-genBinaryOp Ast.Sub = [Generate.Sub T0 T0 T1]
-genBinaryOp Ast.Mul = [Generate.Mul T0 T0 T1]
-genBinaryOp Ast.Div = [Generate.Div T0 T0 T1]
-genBinaryOp Eq = [Generate.SetEq T0 T0 T1]
-genBinaryOp Ne = [Generate.SetNe T0 T0 T1]
-genBinaryOp Gt = [Generate.SetGt T0 T0 T1]
-genBinaryOp Ge = [Generate.SetGe T0 T0 T1]
-genBinaryOp Lt = [Generate.SetLt T0 T0 T1]
-genBinaryOp Le = [Generate.SetLe T0 T0 T1]
-genBinaryOp And = undefined -- (defined above)
-genBinaryOp Or = undefined -- (defined above)
