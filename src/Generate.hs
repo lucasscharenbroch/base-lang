@@ -240,7 +240,7 @@ genStmt retLabel (While _pos cond body) = do
     return [Commented (TextLabel beginLabel) "Begin while"] +>+
            genExpr cond +&+
            [Pop T0, BranchEqZ T0 doneLabel] ++
-           generatedBody ++
+           generatedBody ++ [JumpLabel beginLabel] ++
            [Commented (TextLabel doneLabel) "End while"]
 genStmt _ (Read _pos lval) = return $ [LoadImm V0 5, Syscall] ++ genAddr lval ++ [Pop T0, StoreIdx V0 0 T0]
 genStmt _ (Write _pos expr) = genExpr expr +&+ [Pop A0, LoadImm V0 printType, Syscall]
