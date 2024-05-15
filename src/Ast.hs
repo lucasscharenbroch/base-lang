@@ -3,7 +3,6 @@ module Ast where
 import Text.Parsec (SourcePos)
 
 type Error = String
-
 type Id = String
 type Body i t = ([Decl t], [Stmt i t])
 
