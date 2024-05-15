@@ -8,7 +8,6 @@ type Id = String
 type Body i t = ([Decl t], [Stmt i t])
 
 data Decl t = Decl SourcePos (ValueType t) Id
-    deriving (Show) -- TODO remove (all shows)
 
 data Location = Label String
               | LocalOffset Int
@@ -42,7 +41,6 @@ data ValueType t = VTInteger
 data TopDecl i t = FnDecl SourcePos (Type t) Id [Decl t] (Body i t) t
                  | TupleDef SourcePos Id [Decl t]
                  | Global (Decl t)
-    deriving (Show)
 
 data Stmt i t = Inc SourcePos (Lvalue i)
               | Dec SourcePos (Lvalue i)
@@ -52,7 +50,6 @@ data Stmt i t = Inc SourcePos (Lvalue i)
               | Write SourcePos (Expr i)
               | Return SourcePos (Maybe (Expr i))
               | ExprStmt SourcePos (Expr i) -- call, assignment
-    deriving (Show)
 
 data Expr i = LogicalLit SourcePos Bool
             | IntLit SourcePos Int
@@ -62,13 +59,10 @@ data Expr i = LogicalLit SourcePos Bool
             | UnaryExpr SourcePos UnaryOp (Expr i)
             | BinaryExpr SourcePos BinaryOp (Expr i) (Expr i)
             | Lvalue SourcePos (Lvalue i)
-    deriving (Show)
 
 data Lvalue i = Identifier SourcePos Id i
               | TupleAccess SourcePos (Lvalue i) Id i
     deriving (Show)
 
 data UnaryOp = Negate | Not
-    deriving (Show)
 data BinaryOp = Add | Sub | Mul | Div | Eq | Ne | Gt | Ge | Lt | Le | And | Or
-    deriving (Show)
