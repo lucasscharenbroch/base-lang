@@ -4,6 +4,8 @@ This is a Haskell re-write of UW Madison's [CS536 (Compilers)](https://pages.cs.
 
 The net line-count for the Haskell version is ~1000 LoC, which is less than **25%** of the Java version (~4,300 LoC).
 
+See [the accompanying blog post](https://scharenbroch.dev/blog/rewriting-a-toy-compiler/) for more commentary on the low-level technical differences between the two.
+
 ## Differences From The Course Project
 
 The re-write generally has the behavior as the Java version, but I made a few slight changes:
